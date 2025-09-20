@@ -1,0 +1,18 @@
+[submodule "ruuvi.air.dtm"]
+	path = ruuvi.air.dtm
+	url = https://github.com/ruuvi/ruuvi.air.dtm.git
+[submodule "ruuvi.air.hw_tester"]
+	path = ruuvi.air.hw_tester
+	url = https://github.com/ruuvi/ruuvi.air.hw_tester.git
+[submodule "b0_hook"]
+	path = b0_hook
+	url = https://github.com/ruuvi/ruuvi.air.b0.git
+[submodule "mcuboot_hook"]
+	path = mcuboot_hook
+	url = https://github.com/ruuvi/ruuvi.air.mcuboot.git
+[submodule "fw_loader"]
+	path = fw_loader
+	url = https://github.com/ruuvi/ruuvi.air.fw_loader.git
+[submodule "components/ruuvi.endpoints.c"]
+	path = components/ruuvi.endpoints.c
+	url = https://github.com/ruuvi/ruuvi.endpoints.c.git
