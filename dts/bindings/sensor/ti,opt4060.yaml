@@ -1,0 +1,14 @@
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+description: Texas Instruments OPT4060 RGBW Color Sensor
+
+compatible: "ti,opt4060"
+
+include: [sensor-device.yaml, i2c-device.yaml]
+
+properties:
+  irq-gpios:
+    type: phandle-array
+    description: |
+      The INT signal connection. This signal is active-low as produced by the sensor.

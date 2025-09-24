@@ -1,0 +1,20 @@
+identifier: ruuvi_ruuviair/nrf52840
+name: Ruuvi-RuuviAir
+type: mcu
+arch: arm
+ram: 256
+flash: 1024
+toolchain:
+  - zephyr
+  - gnuarmemb
+  - xtools
+supported:
+  - ble
+  - counter
+  - gpio
+  - i2c
+  - i2s
+  - pwm
+  - watchdog
+  - netif:openthread
+vendor: ruuvi

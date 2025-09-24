@@ -1,0 +1,12 @@
+tests:
+  ztest.test_draw_plot_dsp_rms:
+    sysbuild: true
+    timeout: 10
+    tags: example sysbuild
+    integration_platforms:
+      - native_sim
+    platform_allow:
+      - native_sim
+    build_only: False
+    harness: ztest
+

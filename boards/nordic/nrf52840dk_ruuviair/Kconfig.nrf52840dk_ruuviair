@@ -1,0 +1,14 @@
+# Copyright (c) 2022 Zephyr Project members and individual contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_NRF52840DK_RUUVIAIR
+	select SOC_NRF52840_QIAA if BOARD_NRF52840DK_RUUVIAIR_NRF52840
+
+config BOARD_RUUVI_RUUVIAIR_REV_1
+    bool "RuuviAir v1"
+    default y if BOARD_REVISION = "1"
+
+config BOARD_RUUVI_RUUVIAIR_REV_2
+    bool "RuuviAir v2"
+    default y if BOARD_REVISION = "2"
+

@@ -1,0 +1,32 @@
+reserved0:
+  address: 0x00000000
+  size:    0x00100000
+  region:  external_flash
+
+ext_flash_userspace:
+  address: 0x00100000
+  size:    0x00700000       # 7 MiB area, it is erased when restoring the factory firmware by B0 NSIB bootloader.
+  end_address: 0x00800000
+  region:  external_flash
+
+littlefs_storage1:
+  address:     0x00100000
+  size:        0x00100000   # 1 MiB partition shared between MCUboot and the main app (LittleFS)
+  end_address: 0x00200000
+  region:  external_flash
+hist_storage:
+  address:     0x00200000
+  size:        0x00030000   # 192 KiB partition for the measurements history (ring buffer)
+  end_address: 0x00230000
+  region:  external_flash
+reserved1:
+  address:     0x00230000
+  size:        0x005C0000
+  end_address: 0x007F0000
+  region:  external_flash
+settings_storage:
+  address:     0x007F0000
+  size:        0x00010000   # 64 KiB partition for settings storage
+  end_address: 0x00800000
+  region: external_flash
+

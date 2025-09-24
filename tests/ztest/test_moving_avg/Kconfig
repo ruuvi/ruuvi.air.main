@@ -1,0 +1,11 @@
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+mainmenu "Test moving_avg"
+
+menu "Unit test configuration"
+
+endmenu
+
+source "Kconfig.zephyr"
+

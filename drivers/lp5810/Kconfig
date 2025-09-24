@@ -1,0 +1,32 @@
+# LP5810 4-Channel RGBW LED Driver configuration options
+
+# Copyright (c) 2025, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+menuconfig LP5810
+	bool "LP5810 4-Channel RGBW LED Controller"
+	default n
+	depends on DT_HAS_TI_LP5810_ENABLED
+	select I2C
+	help
+		Enable driver for the Texas Instruments LP5810 I2C 4-Channel RGBW
+		LED controller.
+
+if LP5810
+
+source "subsys/logging/Kconfig.template.log_config"
+
+config LP5810_INIT_PRIORITY
+	int "LP5810 initialization priority"
+	default 90
+	help
+	  System initialization priority for LP5810 driver.
+
+config LP5810_EXPONENTIAL_PWM
+	bool "Use exponential PWM dimming curve"
+	default n
+	help
+	  Enable exponential PWM dimming curve for LP5810.
+	  This allows for smoother brightness transitions.
+
+endif # LP5810

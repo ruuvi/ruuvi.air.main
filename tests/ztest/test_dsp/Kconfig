@@ -1,0 +1,14 @@
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+mainmenu "Test DSP algorithms"
+
+menu "Unit test configuration"
+
+config UUT_PARAM_CHECK
+	bool "Enabled function parameter check"
+
+endmenu
+
+source "Kconfig.zephyr"
+

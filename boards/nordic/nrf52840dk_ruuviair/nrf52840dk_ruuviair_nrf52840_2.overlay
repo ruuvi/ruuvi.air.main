@@ -1,0 +1,16 @@
+/**
+ * @copyright Ruuvi Innovations Ltd, license BSD-3-Clause.
+ */
+
+/ {
+    gpio_enable_sensors: gpio_enable_sensors {
+        compatible = "power-switch";
+        status = "okay";
+        gpios = <&gpio0 8 (GPIO_ACTIVE_HIGH)>;
+    };
+
+    aliases {
+        gpio-supercap-active = &button1;
+    };
+};
+

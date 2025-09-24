@@ -1,0 +1,14 @@
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+description: NXP PCF85263A RTC
+
+compatible: "nxp,pcf85263a"
+
+include: [sensor-device.yaml, i2c-device.yaml]
+
+properties:
+  inta-gpios:
+    type: phandle-array
+    description: |
+      The INT signal connection. This signal is active-low as produced by the sensor.

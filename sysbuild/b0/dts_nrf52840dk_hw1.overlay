@@ -1,0 +1,10 @@
+/**
+ * @copyright Ruuvi Innovations Ltd, license BSD-3-Clause.
+ */
+
+/ {
+	aliases {
+		gpio-supercap-active = &button1;
+	};
+};
+

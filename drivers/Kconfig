@@ -1,0 +1,12 @@
+# Ruuvi drivers configuration options
+
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+menu "Ruuvi Device Drivers"
+
+rsource "opt4060/Kconfig"
+rsource "rtc_pcf85263a/Kconfig"
+rsource "lp5810/Kconfig"
+
+endmenu

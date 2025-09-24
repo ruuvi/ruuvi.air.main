@@ -1,0 +1,21 @@
+# editors
+*.swp
+*~
+
+# build
+build*/
+cmake-build-*/
+
+twister-out*/
+
+*.code-workspace
+.idea/
+.vscode/
+
+.venv*/
+venv*/
+
+VERSION
+
+firmware/
+

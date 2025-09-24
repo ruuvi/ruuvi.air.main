@@ -1,0 +1,13 @@
+board:
+  name: nrf52840dk_ruuviair
+  vendor: nordic
+  revision:
+    format: number
+    default: "2"
+    exact: true
+    revisions:
+      - name: "1"
+      - name: "2"    
+  socs:
+  # Physical nRF52840 SoC on PCA10056
+  - name: nrf52840

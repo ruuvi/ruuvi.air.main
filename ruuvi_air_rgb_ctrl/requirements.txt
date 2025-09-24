@@ -1,0 +1,4 @@
+bleak
+smp
+smpclient
+numpy

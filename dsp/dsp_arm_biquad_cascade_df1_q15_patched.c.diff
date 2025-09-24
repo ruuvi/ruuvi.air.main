@@ -1,0 +1,48 @@
+diff --git a/arm_biquad_cascade_df1_q15.c b/dsp_arm_biquad_cascade_df1_q15_patched.c
+index 71d790c..38746e8 100644
+--- a/arm_biquad_cascade_df1_q15.c
++++ b/dsp_arm_biquad_cascade_df1_q15_patched.c
+@@ -57,7 +57,7 @@
+ 
+ #if defined(ARM_MATH_MVEI) && !defined(ARM_MATH_AUTOVECTORIZE)
+ 
+-void arm_biquad_cascade_df1_q15(
++void arm_biquad_cascade_df1_q15_patched(
+   const arm_biquad_casd_df1_inst_q15 * S,
+   const q15_t * pSrc,
+         q15_t * pDst,
+@@ -309,7 +309,7 @@ void arm_biquad_cascade_df1_q15(
+     while (--stages);
+ }
+ #else
+-void arm_biquad_cascade_df1_q15(
++void arm_biquad_cascade_df1_q15_patched(
+   const arm_biquad_casd_df1_inst_q15 * S,
+   const q15_t * pSrc,
+         q15_t * pDst,
+@@ -375,6 +375,8 @@ void arm_biquad_cascade_df1_q15(
+       /* acc +=  a1 * y[n-1] +  a2 * y[n-2] */
+       acc = __SMLALD(a1, state_out, acc);
+ 
++      acc += ((acc >> (lShift - 1)) & 1) << lShift;
++
+       /* The result is converted from 3.29 to 1.31 if postShift = 1, and then saturation is applied */
+       /* Calc lower part of acc */
+       acc_l = acc & 0xffffffff;
+@@ -411,6 +413,8 @@ void arm_biquad_cascade_df1_q15(
+       /* acc +=  a1 * y[n-1] + a2 * y[n-2] */
+       acc = __SMLALD(a1, state_out, acc);
+ 
++      acc += ((acc >> (lShift - 1)) & 1) << lShift;
++
+       /* The result is converted from 3.29 to 1.31 if postShift = 1, and then saturation is applied */
+       /* Calc lower part of acc */
+       acc_l = acc & 0xffffffff;
+@@ -572,6 +576,7 @@ void arm_biquad_cascade_df1_q15(
+       acc += (q31_t) a2 *Yn2;
+ 
+       /* The result is converted to 1.31  */
++      acc += ((acc >> (shift - 1)) & 1) << shift;
+       acc = __SSAT((acc >> shift), 16);
+ 
+       /* Every time after the output is computed state should be updated. */

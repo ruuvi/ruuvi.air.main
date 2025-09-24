@@ -1,0 +1,205 @@
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+source "Kconfig" # Include Zephyr's main Kconfig
+rsource "drivers/Kconfig"
+
+config RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT
+	int "Delay in ms before reboot after pressing the pinhole button"
+	default 3000
+	help
+	  Delay in ms before reboot after pressing the pinhole button.
+
+choice RUUVI_AIR_PINHOLE_LED
+    prompt "Configure pinhole Red/Green LEDs mode"
+    default RUUVI_AIR_PINHOLE_LED_PWM
+    help
+      Select pinhole LED mode for Ruuvi Air.
+
+config RUUVI_AIR_PINHOLE_LED_GPIO
+	bool "Use GPIO to control pinhole Red/Green LEDs"
+
+config RUUVI_AIR_PINHOLE_LED_PWM
+	bool "Use PWM to control pinhole Red/Green LEDs"
+
+config RUUVI_AIR_PINHOLE_LED_NONE
+	bool "Don't use pinhole Red/Green LEDs"
+
+endchoice  # RUUVI_AIR_PINHOLE_LED
+
+config RUUVI_AIR_PINHOLE_LED_PWM_PERIOD_NS
+	int "Pinhole LED PWM period (ns)"
+	default 20000
+	depends on RUUVI_AIR_PINHOLE_LED_PWM
+	help
+	  PWM period for the bottom LED in nanoseconds.
+
+config RUUVI_AIR_PINHOLE_LED_PWM_PULSE_WIDTH_NS
+	int "Pinhole LED PWM pulse width (ns)"
+	default 1000
+	depends on RUUVI_AIR_PINHOLE_LED_PWM
+	help
+	  PWM pulse width for the bottom LED in nanoseconds.
+
+config RUUVI_AIR_LED_DIMMING_INTERVAL_MS
+	int "LED dimming interval (ms)"
+	default 250
+	help
+	  LED dimming interval in milliseconds.
+
+
+choice RUUVI_AIR_LED_MODE
+    prompt "Configure LED mode"
+    default RUUVI_AIR_LED_MODE_AQI
+    help
+      Select LED mode for Ruuvi Air.
+
+config RUUVI_AIR_LED_MODE_AQI
+	bool "Use LED to indicate Air Quality Index (AQI)"
+
+config RUUVI_AIR_LED_MODE_CALIBRATE
+	bool "Cycle LED to perform calibration"
+
+config RUUVI_AIR_LED_MODE_TEST_RGBW
+	bool "Cycle LED through RGBW colors to test functionality"
+
+config RUUVI_AIR_LED_MODE_DISABLED
+	bool "Disable LED functionality"
+
+endchoice  # RUUVI_AIR_LED_MODE
+
+config RUUVI_AIR_LED_BRIGHTNESS
+	int "LED brightness level"
+	default 25
+	help
+	  LED brightness level (0-255).
+
+config RUUVI_AIR_SENSORS_POLL_CYCLE_MS
+	int "Sensor polling cycle in milliseconds"
+	default 1000
+	help
+	  Sensor polling cycle in milliseconds.
+
+
+config RUUVI_AIR_USE_SENSOR_SEN66
+	bool "Enable use of SEN66 sensor for air quality measurements"
+	default y
+
+
+config RUUVI_AIR_USE_SENSOR_DPS310
+	bool "Enable use of DPS310 sensor for air pressure and temperature measurements"
+	default y
+
+
+config RUUVI_AIR_USE_SENSOR_OPT4060
+	bool "Enable use of OPT4060 sensor for ambient light measurements"
+	default y
+
+config RUUVI_AIR_OPT4060_LUMINOSITY_MULTIPLIER
+	int "OPT4060 luminosity multiplier"
+	default 310
+	help
+	  Multiplier for luminosity value read from OPT4060 sensor.
+
+config RUUVI_AIR_OPT4060_NUM_MEASUREMENTS_PER_SECOND
+	int "Number of OPT4060 measurements per second"
+	default 50
+	help
+	  Number of OPT4060 measurements per second.
+
+config RUUVI_AIR_OPT4060_LUMINOSITY_AVG_PERIOD
+	int "Moving average period for OPT4060 luminosity (seconds)"
+	default 10
+	help
+	  Moving average period for OPT4060 luminosity readings.
+
+config RUUVI_AIR_ENABLE_HIST_LOG
+	bool "Enable logging of sensor data to flash memory"
+	default y
+
+
+config RUUVI_AIR_USE_BLE
+	bool "Enable Bluetooth Low Energy (BLE) functionality"
+	default y
+
+
+config RUUVI_AIR_USE_BLE_ADV_NORMAL
+	bool "Enable legacy BLE advertising"
+	default y
+
+
+config RUUVI_AIR_USE_BLE_ADV_EXTENDED
+	bool "Enable extended BLE advertising"
+	default y
+
+
+config RUUVI_AIR_USE_BLE_ADV_CODED
+	bool "Enable coded BLE advertising"
+	default y
+
+
+config RUUVI_AIR_ENABLE_BLE_LOGGING
+	bool "Enable logging over BLE"
+	default n
+
+
+config RUUVI_AIR_LOG_TIME
+	bool "Log time on every polling cycle"
+	default y
+
+
+choice RUUVI_AIR_MIC
+    prompt "Microphone"
+    default RUUVI_AIR_MIC_NONE
+    help
+      Select microphone to be used by Ruuvi Air.
+
+config RUUVI_AIR_MIC_NONE
+	bool "No microphone"
+
+config RUUVI_AIR_MIC_SPG08P4HM4H
+	bool "Use SPG08P4HM4H"
+
+endchoice
+
+config RUUVI_AIR_MIC_PDM_THREAD_PRIORITY
+	int "Thread priority"
+	default 11
+	help
+	  Priority of thread used by the driver to handle interrupts.
+
+config RUUVI_AIR_MIC_PDM_THREAD_STACK_SIZE
+	int "Thread stack size"
+	default 4096
+	help
+	  Stack size of thread used by the driver to handle interrupts.
+
+config RUUVI_AIR_MIC_PDM_SAMPLE_RATE
+	int "Sample rate"
+	default 16000
+	help
+	  Sample rate of the microphone.
+
+config RUUVI_AIR_NUS_THREAD_PRIORITY
+	int "Thread priority"
+	default 12
+	help
+	  Priority of NUS thread.
+
+config RUUVI_AIR_NUS_THREAD_STACK_SIZE
+	int "Thread stack size"
+	default 4096
+	help
+	  Stack size of NUS thread.
+
+config RUUVI_AIR_OPT_RGB_CTRL_THREAD_PRIORITY
+	int "Thread priority"
+	default -16  # The highest cooperative priority (CONFIG_NUM_COOP_PRIORITIES)
+	help
+	  Priority of opt_rgb_ctrl thread.
+
+config RUUVI_AIR_OPT_RGB_CTRL_THREAD_STACK_SIZE
+	int "Thread stack size"
+	default 3072
+	help
+	  Stack size of opt_rgb_ctrl thread.

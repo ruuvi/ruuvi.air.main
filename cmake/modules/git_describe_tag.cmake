@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+
+include_guard(GLOBAL)
+
+find_package(Git QUIET)
+
+# Usage:
+#   git_describe_tag(<dir> <tag_prefix> <output>)
+#
+# Helper function to get a short GIT description associated with a directory.
+# OUTPUT is set to the output of `git describe --abbrev=12 --always --tags --dirty --match <tag_prefix>*` as run
+# from DIR.
+#
+function(git_describe_tag DIR TAG_PREFIX OUTPUT)
+  if(GIT_FOUND)
+    # Normalize: trim spaces and strip accidental surrounding quotes
+    string(STRIP "${TAG_PREFIX}" TAG_PREFIX)
+    string(REGEX REPLACE "^\"(.*)\"$" "\\1" TAG_PREFIX "${TAG_PREFIX}")
+
+    # Build the match pattern once
+    set(_match_pattern "${TAG_PREFIX}*")
+
+    execute_process(
+      COMMAND ${GIT_EXECUTABLE} describe --abbrev=12 --always --tags --dirty --match "${_match_pattern}"
+      WORKING_DIRECTORY                ${DIR}
+      OUTPUT_VARIABLE                  DESCRIPTION
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_STRIP_TRAILING_WHITESPACE
+      ERROR_VARIABLE                   stderr
+      RESULT_VARIABLE                  return_code
+    )
+    if(return_code)
+      message(FATAL_ERROR "git describe failed: ${stderr}")
+    elseif(NOT "${stderr}" STREQUAL "")
+      message(FATAL_ERROR "git describe warned: ${stderr}")
+    else()
+      # Save output
+      set(${OUTPUT} ${DESCRIPTION} PARENT_SCOPE)
+    endif()
+  endif()
+endfunction()

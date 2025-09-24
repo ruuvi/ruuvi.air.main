@@ -1,0 +1,20 @@
+# PCF85263A RTC configuration options
+
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+menuconfig RTC_PCF85263A
+	bool "PCF85263A RTC"
+	default y
+	depends on DT_HAS_NXP_PCF85263A_ENABLED
+	select I2C
+	help
+	  Enable driver for PCF85263A RTC.
+
+if RTC_PCF85263A
+
+config RTC_PCF85263A_INT
+	bool "Interrupt mode"
+	default y
+
+endif

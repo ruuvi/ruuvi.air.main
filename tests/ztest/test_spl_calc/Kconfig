@@ -1,0 +1,12 @@
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+mainmenu "Test SPL calc"
+
+source "Kconfig.zephyr"
+
+config RUUVI_AIR_MIC_PDM_SAMPLE_RATE
+	int "Sample rate"
+	default 16000
+	help
+	  Sample rate of the microphone.

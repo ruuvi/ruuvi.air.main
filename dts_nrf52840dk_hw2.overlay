@@ -1,0 +1,67 @@
+/**
+ * @copyright Ruuvi Innovations Ltd, license BSD-3-Clause.
+ */
+
+#include <zephyr/dt-bindings/led/led.h>
+
+/* Path to lp5810.h must be relative to
+   "ruuvi.air.c/dts" or
+   "ruuvi.air.c/boards/nordic/nrf52840dk_ruuviair/dts".
+*/
+#include <../../../../drivers/lp5810/include/lp5810.h>
+
+&i2c0 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_STANDARD>;
+
+    DPS310@77 {
+        status = "okay";
+        compatible = "infineon,dps310";
+        reg = <0x77>;
+    };
+    OPT4060@44 {
+        status = "okay";
+        compatible = "ti,opt4060";
+        reg = <0x44>;
+    };
+	rtc_pcf85263a: pcf85263a@51 {
+		status = "okay";
+                inta-gpios = <&gpio0 17 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		compatible = "nxp,pcf85263a";
+		reg = <0x51>;
+	};
+    LP5810@58 {
+        status = "okay";
+        compatible = "ti,lp5810";
+        reg = <0x58>;
+        // max_curr_opt; // Uncomment to set max current to 51 mA
+        lod_action_cur_out_shutdown; // Shut down current sink when LED open fault happens
+        lsd_action_all_out_shutdown; // Shut down all OUTs when LED short fault happens.
+        lsd_threshold = <LP5810_LSD_THRESHOLD_065_VOUT>;
+        led_0 {
+            label = "LP5810 Red LED";
+            index = <0>;
+            color-mapping =
+                <LED_COLOR_ID_RED>;
+        };
+        led_1 {
+            label = "LP5810 Green LED";
+            index = <1>;
+            color-mapping =
+                <LED_COLOR_ID_GREEN>;
+        };
+        led_2 {
+            label = "LP5810 Blue LED";
+            index = <2>;
+            color-mapping =
+                <LED_COLOR_ID_BLUE>;
+        };
+    };
+};
+
+/ {
+    aliases {
+        rtc-0 = &rtc_pcf85263a;
+    };
+};
+

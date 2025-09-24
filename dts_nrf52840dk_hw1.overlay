@@ -1,0 +1,26 @@
+/**
+ * @copyright Ruuvi Innovations Ltd, license BSD-3-Clause.
+ */
+
+&i2c0 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_STANDARD>;
+
+    DPS310@77 {
+        status = "okay";
+        compatible = "infineon,dps310";
+        reg = <0x77>;
+    };
+    OPT4060@44 {
+        status = "okay";
+        compatible = "ti,opt4060";
+        reg = <0x44>;
+    };
+};
+
+/ {
+    aliases {
+        gpio-supercap-active = &button1;
+    };
+};
+

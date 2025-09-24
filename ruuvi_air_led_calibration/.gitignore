@@ -1,0 +1,11 @@
+# editors
+*.swp
+*~
+
+*.code-workspace
+.idea/
+.vscode/
+
+.venv*/
+venv*/
+

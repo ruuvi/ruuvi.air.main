@@ -1,0 +1,14 @@
+tests:
+  ztest.test_led:
+    sysbuild: true
+    timeout: 10
+    tags: example sysbuild
+    integration_platforms:
+      - nrf52840dk/nrf52840
+      - ruuvi_ruuviair/nrf52840
+    platform_allow:
+      - nrf52840dk/nrf52840
+      - ruuvi_ruuviair/nrf52840
+    build_only: False
+    harness: ztest
+

@@ -1,0 +1,93 @@
+
+[system]
+worker_ignore_signals = false
+
+[qspi]
+mem_size = 16777216
+read_mode = "READ4IO"
+write_mode = "PP4O"
+address_mode = "BIT24"
+spi_mode = "MODE0"
+wip_index = 0
+rx_delay = 2
+frequency = "M16"
+page_program_size = "PAGE256"
+retain_ram = true
+
+[qspi.custom]
+io3_level = "LEVEL_HIGH"
+io2_level = "LEVEL_LOW"
+
+[[qspi.custom.instructions]]
+data = []
+command = 6
+[[qspi.custom.instructions]]
+data = [
+2,
+]
+command = 49
+
+[qspi.dio3]
+port = 0
+pin = 24
+
+[qspi.dio2]
+port = 0
+pin = 21
+
+[qspi.dio1]
+port = 0
+pin = 20
+
+[qspi.csn]
+port = 0
+pin = 19
+
+[qspi.sck]
+port = 0
+pin = 23
+delay = 128
+
+[qspi.dio0]
+port = 0
+pin = 22
+
+
+[target]
+localdomain_started_timeout_ms = 7000
+write_mpc000_rules = "ALWAYS"
+write_mpc110_override11 = "ALWAYS"
+write_mpc_rules = "AUTO"
+clockspeed = 2000
+family = "AUTO"
+
+[approtect]
+install_unlock_image = true
+verify_uicr_approtect = false
+write_uicr_approtect = true
+
+[jlink]
+dap_powerdown_timeout_ms = 1000
+auto_update_fw = true
+
+[rtt]
+async_read_period_ms = 10
+async_write_period_ms = 10
+invalidate_control_block_on_stop = true
+
+[log]
+
+[log.terminal]
+pattern = "[%5l] %v"
+level = "ERROR"
+
+[log.file]
+level = "TRACE"
+pattern = "[%Y-%b-%d %H:%M:%S] [%5l] %v"
+file = "log.log"
+
+[log.dll]
+pattern = "%v"
+level = "TRACE"
+
+

@@ -1,0 +1,7 @@
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+mainmenu "Draw plot DSP filter A-weighting"
+
+source "Kconfig.zephyr"
+

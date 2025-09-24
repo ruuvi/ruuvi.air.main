@@ -1,0 +1,169 @@
+name: Build Firmware ruuvi_air_rgb_ctrl
+
+on:
+  push:
+    branches: [ master ]
+    tags: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+    types: [opened, synchronize, reopened]
+
+env:
+  NCS_VERSION: v2.8.0
+
+jobs:
+  build:
+    name: Build ruuvi_air_rgb_ctrl
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y srecord
+
+      - name: Checkout the code
+        uses: actions/checkout@v4     # Checks-out repository under $GITHUB_WORKSPACE
+        with:
+          path: ruuvi.air.c
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          submodules: true
+
+      - name: Checkout submodules
+        run: cd ruuvi.air.c && git submodule update --init --recursive
+
+      # Step 1: Cache nrfutil
+      - name: Cache nrfutil
+        id: cache-nrfutil
+        uses: actions/cache@v4
+        with:
+          path: nrfutil-bin
+          key: nrfutil-${{ runner.os }}-v1
+
+      # Step 2: Install nrfutil if cache misses
+      - name: Install nrfutil
+        if: steps.cache-nrfutil.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p nrfutil-bin
+          wget "https://files.nordicsemi.com/ui/api/v1/download?repoKey=swtools&path=external/nrfutil/executables/x86_64-unknown-linux-gnu/nrfutil&isNativeBrowsing=false" -O nrfutil-bin/nrfutil
+          chmod +x nrfutil-bin/nrfutil
+
+      # Step 3: Add nrfutil to PATH
+      - name: Add nrfutil to PATH
+        run: echo "${{ github.workspace }}/nrfutil-bin" >> $GITHUB_PATH
+
+      # Step 4: Verify nrfutil Installation
+      - name: Verify nrfutil Installation
+        run: nrfutil --version
+
+      # Step 5: Cache nrfutil Toolchain Manager
+      - name: Cache nrfutil Toolchain Manager
+        id: cache-nrfutil-tcm
+        uses: actions/cache@v4
+        with:
+          path: ~/.nrfutil
+          key: nrfutil-tcm-${{ runner.os }}-v2
+
+      # Step 6: Install the Toolchain Manager
+      - name: Install nRF Connect SDK Toolchain Manager
+        if: steps.cache-nrfutil-tcm.outputs.cache-hit != 'true'
+        run: |
+          nrfutil install toolchain-manager
+          nrfutil install nrf5sdk-tools
+
+      # Step 7: Cache the nRF Connect SDK
+      - name: Cache nRF Connect SDK
+        id: cache-ncs
+        uses: actions/cache@v4
+        with:
+          path: ~/ncs
+          key: ncs-${{ runner.os }}-${{ env.NCS_VERSION }}-v1
+
+      # Step 8: Install the Toolchain and SDK if cache misses
+      - name: Install nRF Connect SDK Toolchain and SDK
+        if: steps.cache-ncs.outputs.cache-hit != 'true'
+        run: |
+          nrfutil toolchain-manager install --ncs-version $NCS_VERSION
+          # Workaround for "git-remote-https: error while loading shared libraries: libunistring.so.2: cannot open shared object file: No such file or directory"
+          # https://devzone.nordicsemi.com/f/nordic-q-a/106982/error-installing-nrf-connect-sdk-in-vscode-linux-libunistring-so-2-cannot-open-shared-object-file-no-such-file-or-directory
+          rm ~/ncs/toolchains/b81a7cd864/usr/lib/x86_64-linux-gnu/libpsl.so.5*
+          cd ~/ncs
+          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
+          west init -m https://github.com/nrfconnect/sdk-nrf --mr $NCS_VERSION $NCS_VERSION
+          cd ~/ncs/$NCS_VERSION
+          west update
+
+      - name: zephyr-export
+        run: |
+          set -x
+          cd ~/ncs/$NCS_VERSION
+          nrfutil toolchain-manager launch west -- zephyr-export
+
+      - name: Check directories
+        run: |
+          set -x
+          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
+          echo HOME: $HOME
+          echo PATH: $PATH
+          west --version
+          which clang-format
+          clang-format --version
+          which python
+          python --version
+          which python3
+          python3 --version
+          pwd
+          ls -la .
+          ls -la ./ruuvi.air.c
+          ls -la ~
+          ls -la ~/ncs
+          ls -la ~/ncs/$NCS_VERSION
+          cd ~/ncs/$NCS_VERSION/zephyr && git describe --tags
+
+      - name: Install Python dependencies
+        run: |
+          set -x
+          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
+          source ~/ncs/$NCS_VERSION/zephyr/zephyr-env.sh
+          python3 -m pip install --upgrade pip
+          pip3 install ecdsa
+
+      - name: Create symlink to code in ncs directory
+        run: |
+          set -x
+          ln -s $GITHUB_WORKSPACE/ruuvi.air.c ~/ncs/$NCS_VERSION/ruuvi.air.c
+
+      - name: Build ruuvi_air_rgb_ctrl
+        run: |
+          set -x
+          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
+          source ~/ncs/$NCS_VERSION/zephyr/zephyr-env.sh
+          ORIG_DIR=$(pwd)
+          cd ~/ncs/$NCS_VERSION/zephyr/samples/bluetooth/hci_usb
+          west build -b nrf52840dk/nrf52840 -d build_nrf52840dk .
+          west build -b nrf52840dongle/nrf52840 -d build_nrf52840dongle .
+          nrfutil pkg generate --hw-version 52 --sd-req=0x00 \
+            --application build_nrf52840dongle/hci_usb/zephyr/zephyr.hex \
+            --application-version 1 build_nrf52840dongle/hci_usb.zip
+          mkdir -p ~/ncs/$NCS_VERSION/ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware
+          cp build_nrf52840dk/merged.hex ~/ncs/$NCS_VERSION/ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dk.hex
+          cp build_nrf52840dongle/hci_usb.zip ~/ncs/$NCS_VERSION/ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dongle.zip
+          cd $ORIG_DIR
+
+      - name: Remove symlink to code in ncs directory
+        run: |
+          set -x
+          rm ~/ncs/$NCS_VERSION/ruuvi.air.c
+
+      - name: Upload artifact ruuvi_air_rgb_ctrl
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruuvi_air_rgb_ctrl
+          path: |
+            ruuvi.air.c/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.py
+            ruuvi.air.c/ruuvi_air_rgb_ctrl/requirements.txt
+            ruuvi.air.c/ruuvi_air_rgb_ctrl/README.md
+            ruuvi.air.c/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.bat
+            ruuvi.air.c/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.sh
+            ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dk.hex
+            ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dongle.zip

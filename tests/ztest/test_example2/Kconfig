@@ -1,0 +1,13 @@
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+mainmenu "Example unity test"
+
+menu "Unit under test configuration"
+
+config UUT_PARAM_CHECK
+	bool "Enabled function parameter check"
+
+endmenu
+
+source "Kconfig.zephyr"

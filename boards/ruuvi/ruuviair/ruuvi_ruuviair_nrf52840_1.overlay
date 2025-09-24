@@ -1,0 +1,77 @@
+/**
+ * @copyright Ruuvi Innovations Ltd, license BSD-3-Clause.
+ */
+
+/ {
+    gpio_enable_sensors: gpio_enable_sensors {
+        compatible = "power-switch";
+        status = "okay";
+        gpios = <&gpio0 8 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+    };
+
+    buttons {
+        button1: button_1 {
+            gpios = <&gpio0 17 (GPIO_ACTIVE_LOW)>;
+            label = "SuperCap Active";
+            zephyr,code = <INPUT_KEY_1>;
+        };
+    };
+
+    aliases {
+        gpio-supercap-active = &button1;
+    };
+};
+
+&gpio0 {
+    status = "okay";
+    gpio-reserved-ranges = <0 2>, <4 2>, <9 2>, <11 2>, <13 2>, <18 7>;
+    gpio-line-names =
+                "XL1",             // GPIO 0
+                "XL2",             // GPIO 1
+                "RC_PIN3",         // GPIO 2
+                "RC_PIN2",         // GPIO 3
+                "MIC_PDM",         // GPIO 4
+                "MIC_CLK",         // GPIO 5
+                "",                // GPIO 6
+                "BUTTON_PINHOLE",  // GPIO 7
+                "ENABLE_SENSORS",  // GPIO 8
+                "NFC1",            // GPIO 9
+                "NFC2",            // GPIO 10
+                "UART0_TX",        // GPIO 11
+                "UART0_RX",        // GPIO 12
+                "I2C_SCL",         // GPIO 13
+                "I2C_SDA",         // GPIO 14
+                "",                // GPIO 15
+                "",                // GPIO 16
+                "SUPERCAP_ACTIVE", // GPIO 17
+                "RESET",           // GPIO 18
+                "QSPI CS",         // GPIO 19
+                "QSPI DIO1",       // GPIO 20
+                "QSPI DIO2",       // GPIO 21
+                "QSPI DIO0",       // GPIO 22
+                "QSPI CLK",        // GPIO 23
+                "QSPI_DIO3",       // GPIO 24
+                "",                // GPIO 25
+                "",                // GPIO 26
+                "",                // GPIO 27
+                "RC_PIN4",         // GPIO 28
+                "RC_PIN5",         // GPIO 29
+                "RC_PIN6",         // GPIO 30
+                "RC_PIN7";         // GPIO 31
+};
+
+&i2c0 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_STANDARD>;
+
+    DPS310@77 {
+        status = "okay";
+        compatible = "infineon,dps310";
+        reg = <0x77>;
+    };
+    OPT4060@44 {
+        status = "okay";
+        compatible = "ti,opt4060";
+        reg = <0x44>;
+    };
+};

@@ -1,0 +1,26 @@
+/**
+ * @copyright Ruuvi Innovations Ltd, license BSD-3-Clause.
+ */
+
+/ {
+	gpio_enable_sensors: gpio_enable_sensors {
+		compatible = "power-switch";
+		status = "okay";
+		gpios = <&gpio0 11 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+	};
+};
+
+/ {
+	chosen {
+		nordic,pm-ext-flash = &mx25r64;
+	};
+};
+
+/ {
+	aliases {
+		button-pinhole = &button0;
+		led-green = &led0;
+		led-red = &led1;
+	};
+};
+

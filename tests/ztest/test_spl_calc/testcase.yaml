@@ -1,0 +1,18 @@
+tests:
+  ztest.test_spl_calc:
+    sysbuild: true
+    timeout: 35
+    tags: example sysbuild
+    integration_platforms:
+      - native_sim
+      - native_sim/native/64
+      - nrf52840dk/nrf52840
+      - ruuvi_ruuviair/nrf52840
+    platform_allow:
+      - native_sim
+      - native_sim/native/64
+      - nrf52840dk/nrf52840
+      - ruuvi_ruuviair/nrf52840
+    build_only: False
+    harness: ztest
+

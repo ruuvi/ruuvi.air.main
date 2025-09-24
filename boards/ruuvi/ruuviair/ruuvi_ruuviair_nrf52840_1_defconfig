@@ -1,0 +1,4 @@
+
+# Select the LFCLK source.
+# Use the external low-frequency oscillator (LFXO)
+CONFIG_CLOCK_CONTROL_NRF_K32SRC_XTAL=y

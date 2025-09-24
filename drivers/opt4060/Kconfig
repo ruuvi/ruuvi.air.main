@@ -1,0 +1,161 @@
+# OPT4060 RGBW Color Sensor configuration options
+
+# Copyright (c) 2024, Ruuvi Innovations Ltd
+# SPDX-License-Identifier: BSD-3-Clause
+
+menuconfig OPT4060
+	bool "OPT4060 RGBW Color Sensor"
+	default y
+	depends on DT_HAS_TI_OPT4060_ENABLED
+	select I2C
+	help
+	  Enable driver for OPT4060 RGBW Color sensors.
+
+if OPT4060
+
+choice OPT4060_INT_MODE
+	prompt "Interrupt mode"
+	default OPT4060_INT_NONE
+	help
+	  Specify the type of interrupts handling to be used by the driver.
+
+config OPT4060_INT_NONE
+	bool "No interrupts"
+
+config OPT4060_INT_GLOBAL_THREAD
+	bool "Use global thread"
+	depends on GPIO
+	select OPT4060_INT
+
+config OPT4060_INT_OWN_THREAD
+	bool "Use own thread"
+	depends on GPIO
+	select OPT4060_INT
+endchoice
+
+config OPT4060_THREAD_PRIORITY
+	int "Thread priority"
+	depends on OPT4060_INT_OWN_THREAD
+	default 10
+	help
+	  Priority of thread used by the driver to handle interrupts.
+
+config OPT4060_THREAD_STACK_SIZE
+	int "Thread stack size"
+	depends on OPT4060_INT_OWN_THREAD
+	default 2048
+	help
+	  Stack size of thread used by the driver to handle interrupts.
+
+config OPT4060_INT_DATA_READY_FOR_ALL_CHANNELS
+	bool "Data ready interrupt for all channels or each channel"
+	depends on OPT4060_INT
+	default y
+	help
+	  Set to 'y' if the data ready interrupt should be generated after conversion of all channels,
+	  otherwise generate interrupt after convertsion of each channel.
+
+config OPT4060_OP_MODE_ONESHOT
+	bool "One-shot mode"
+	default n
+	help
+	  Set to 'y' if the sensor should operate in one-shot mode, otherwise in continuous mode.
+
+config OPT4060_OP_MODE_ONE_SHOT_FORCED_AUTO_RANGE
+	bool "Forced auto-range one-shot mode"
+	default n
+	help
+	  Every one shot trigger forces a full reset on auto-ranging control logic and
+	  a fresh auto-range detection in initiated ignoring the previous measurements.
+
+choice OPT4060_RANGE
+	prompt "Light range selection"
+	default OPT4060_RANGE_AUTO
+	help
+	  Select the light range of the sensor.
+	  Supported values:
+	  auto, 2254 lux, 4509 lux, 9018 lux, 18036 lux, 36071 lux, 72142 lux, 144284 lux.
+
+config OPT4060_RANGE_AUTO
+	bool "auto"
+
+config OPT4060_RANGE_2254_LUX
+	bool "2254 lux"
+
+config OPT4060_RANGE_4509_LUX
+	bool "4509 lux"
+
+config OPT4060_RANGE_9018_LUX
+	bool "9018 lux"
+
+config OPT4060_RANGE_18036_LUX
+	bool "18036 lux"
+
+config OPT4060_RANGE_36071_LUX
+	bool "36071 lux"
+
+config OPT4060_RANGE_72142_LUX
+	bool "72142 lux"
+
+config OPT4060_RANGE_144284_LUX
+	bool "144284 lux"
+
+endchoice
+
+choice OPT4060_CONV_TIME
+	prompt "Conversion time"
+	default OPT4060_CONV_TIME_100_MS
+	help
+	  Select conversion time.
+	  Supported values:
+	  600 us, 1 ms, 1.8 ms, 3.4 ms, 6.5 ms, 12.7 ms, 25 ms, 50 ms, 100 ms, 200 ms, 400 ms, 800 ms.
+
+config OPT4060_CONV_TIME_600_US
+	bool "600 us"
+config OPT4060_CONV_TIME_1_MS
+	bool "1 ms"
+config OPT4060_CONV_TIME_1_8_MS
+	bool "1.8 ms"
+config OPT4060_CONV_TIME_3_4_MS
+	bool "3.4 ms"
+config OPT4060_CONV_TIME_6_5_MS
+	bool "6.5 ms"
+config OPT4060_CONV_TIME_12_7_MS
+	bool "12.7 ms"
+config OPT4060_CONV_TIME_25_MS
+	bool "25 ms"
+config OPT4060_CONV_TIME_50_MS
+	bool "50 ms"
+config OPT4060_CONV_TIME_100_MS
+	bool "100 ms"
+config OPT4060_CONV_TIME_200_MS
+	bool "200 ms"
+config OPT4060_CONV_TIME_400_MS
+	bool "400 ms"
+config OPT4060_CONV_TIME_800_MS
+	bool "800 ms"
+endchoice
+
+config OPT4060_ONE_SHOT_MODE_QUICK_WAKEUP
+	bool "Quick wakeup in one shot mode"
+	default n
+	help
+	  Quick Wake-up from Standby in one shot mode by not powering down all circuits.
+	  Applicable only in one shot mode and helps get out of standby mode faster
+	  with penalty in power consumption compared to full standby mode.
+
+config OPT4060_TRIGGER_DATA_READY
+	bool "Trigger data ready"
+	default y
+	depends on OPT4060_INT
+	select OPT4060_TRIGGER
+	help
+	  Trigger data ready handler when data is ready.
+
+config OPT4060_TRIGGER
+	bool
+
+config OPT4060_INT
+	bool
+
+endif

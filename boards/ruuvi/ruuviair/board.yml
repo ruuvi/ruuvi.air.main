@@ -1,0 +1,12 @@
+board:
+  name: ruuvi_ruuviair
+  vendor: ruuvi
+  revision:
+    format: number
+    default: "2"
+    exact: true
+    revisions:
+      - name: "1"
+      - name: "2"
+  socs:
+  - name: nrf52840
