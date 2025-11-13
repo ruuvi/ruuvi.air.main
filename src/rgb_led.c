@@ -71,6 +71,16 @@ const struct device* const dev_lp5810 = DEVICE_DT_GET_ONE(ti_lp5810);
 #endif // DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
 
 bool
+rgb_led_is_lp5810_ready(void)
+{
+#if DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
+    return device_is_ready(dev_lp5810);
+#else
+    return false;
+#endif // DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
+}
+
+bool
 rgb_led_set_raw_currents_and_pwms(
     const rgb_led_currents_t* const p_rgb_led_currents,
     const rgb_led_pwms_t* const     p_rgb_led_pwms)

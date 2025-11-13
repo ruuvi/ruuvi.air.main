@@ -13,9 +13,11 @@
 #include <zephyr/retention/bootmode.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/timeutil.h>
+#include <zephyr/drivers/hwinfo.h>
 #include "app_led.h"
 #include "app_rtc.h"
 #include "app_segger_rtt.h"
+#include "app_mcumgr_mgmt_callbacks.h"
 #include "sen66_wrap.h"
 #include "sensors.h"
 #include "ble_adv.h"
@@ -31,6 +33,9 @@
 #include "lp5810_test.h"
 #include "opt_rgb_ctrl.h"
 #include "app_settings.h"
+#include "app_watchdog.h"
+#include "app_button.h"
+#include "app_fw_ver.h"
 #include "app_version.h"
 #include "ncs_version.h"
 #include "version.h"
@@ -228,7 +233,7 @@ check_rtc_clock(void)
 static void
 poll_sensors(void)
 {
-    static uint16_t measurement_cnt = 0;
+    static measurement_cnt_t measurement_cnt = 0;
 
     app_led_green_set_if_button_is_not_pressed(true);
 
@@ -252,7 +257,7 @@ poll_sensors(void)
     const sensors_measurement_t measurement = sensors_get_measurement();
     if (moving_avg_append(&measurement))
     {
-        const hist_log_record_data_t record = moving_avg_get_accum();
+        const hist_log_record_data_t record = moving_avg_get_accum(measurement_cnt, ble_adv_get_mac());
         if (!hist_log_append_record((uint32_t)time(NULL), &record, true))
         {
             LOG_ERR("hist_log_append_record failed");
@@ -321,9 +326,57 @@ poll_sensors(void)
 #endif
 }
 
+static void
+log_reset_cause(void)
+{
+    uint32_t cause = 0;
+    if (0 == hwinfo_get_reset_cause(&cause))
+    {
+        LOG_INF("Reset cause bitmask: 0x%08" PRIx32, cause);
+        if (0 != (cause & RESET_PIN))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_PIN");
+        }
+        if (0 != (cause & RESET_SOFTWARE))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_SOFTWARE");
+        }
+        if (0 != (cause & RESET_BROWNOUT))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_BROWNOUT");
+        }
+        if (0 != (cause & RESET_POR))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_POR");
+        }
+        if (0 != (cause & RESET_WATCHDOG))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_WATCHDOG");
+        }
+        if (0 != (cause & RESET_DEBUG))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_DEBUG");
+        }
+        if (0 != (cause & RESET_HARDWARE))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_HARDWARE");
+        }
+        if (0 != (cause & RESET_USER))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_USER");
+        }
+        if (0 != (cause & RESET_TEMPERATURE))
+        {
+            LOG_INF("Previous reset cause: %s", "RESET_TEMPERATURE");
+        }
+        hwinfo_clear_reset_cause();
+    }
+}
+
 int
 main(void)
 {
+    app_fw_ver_init();
 #if defined(CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION)
     TLOG_INF(
         "### RuuviAir: Image version: %s (FwInfoCnt: %u)",
@@ -333,16 +386,16 @@ main(void)
 #if APP_VERSION_NUMBER != 0
     TLOG_INF(
         "### RuuviAir: Version: %s, build: %s, APP_VERSION_NUMBER: %s",
-        APP_VERSION_EXTENDED_STRING,
+        app_fw_ver_get(),
         STRINGIFY(APP_BUILD_VERSION),
         STRINGIFY(APP_VERSION_NUMBER));
     // TLOG_INF(
     //     "### RuuviAir: Version: %s, build: %s, commit: %s",
-    //     APP_VERSION_EXTENDED_STRING,
+    //     app_fw_ver_get(),
     //     STRINGIFY(APP_BUILD_VERSION),
     //     APP_COMMIT_STRING);
 #else
-    TLOG_INF("### RuuviAir: Version: %s, build: %s", APP_VERSION_EXTENDED_STRING, STRINGIFY(APP_BUILD_VERSION));
+    TLOG_INF("### RuuviAir: Version: %s, build: %s", app_fw_ver_get(), STRINGIFY(APP_BUILD_VERSION));
 #endif
     TLOG_INF(
         "### RuuviAir: NCS version: %s, build: %s, commit: %s",
@@ -354,6 +407,7 @@ main(void)
         KERNEL_VERSION_EXTENDED_STRING,
         STRINGIFY(BUILD_VERSION),
         ZEPHYR_COMMIT_STRING);
+    log_reset_cause();
 
     if (bootmode_check(BOOT_MODE_TYPE_FACTORY_RESET))
     {
@@ -402,6 +456,7 @@ main(void)
         LOG_ERR("ble_adv_init failed");
         return -1;
     }
+    app_mcumgr_mgmt_callbacks_init(lfs_storage_mnt.mnt_point);
 
     if (!nfc_init(ble_adv_get_mac()))
     {
@@ -410,6 +465,10 @@ main(void)
     }
     LOG_INF("NFC init ok");
 
+    if (!app_watchdog_start())
+    {
+        LOG_ERR("Failed to start watchdog");
+    }
     k_timer_start(&app_timer_poll_sensors, K_MSEC(0), K_MSEC(APP_PERIOD_POLL_SENSORS_MS));
     k_timer_start(&app_timer_measure_luminosity, K_MSEC(0), K_MSEC(APP_PERIOD_MEASURE_LUMINOSITY_MS));
 
@@ -424,6 +483,10 @@ main(void)
         if (0 != (events & APP_EVENT_TYPE_POLL_SENSORS))
         {
             poll_sensors();
+            if (!app_button_is_pressed())
+            {
+                app_watchdog_feed();
+            }
         }
         if (0 != (events & APP_EVENT_TYPE_MEASURE_LUMINOSITY))
         {
@@ -454,5 +517,9 @@ __wrap_sys_reboot(int type) // NOSONAR
     k_msleep(25); // Give some time to print log message
 
     /* Call the former implementation to actually restart the board */
+#if CONFIG_DEBUG
     __real_sys_reboot(type);
+#else
+    app_watchdog_force_trigger();
+#endif
 }

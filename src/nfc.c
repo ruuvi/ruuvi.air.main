@@ -10,6 +10,7 @@
 #include <zephyr/logging/log.h>
 #include "app_led.h"
 #include "ruuvi_endpoint_f0.h"
+#include "app_fw_ver.h"
 #include "app_version.h"
 #include "utils.h"
 
@@ -28,7 +29,7 @@ static uint8_t       nfc_payload_id[]  = { 'I', 'D', ':', ' ', 'X', 'X', ':', 'X
                                            'X', ':', 'X', 'X', ':', 'X', 'X', ':', 'X', 'X', ':', 'X', 'X', '\0' };
 static uint8_t       nfc_payload_mac[] = { 'M', 'A', 'C', ':', ' ', 'X', 'X', ':', 'X', 'X', ':', 'X',
                                            'X', ':', 'X', 'X', ':', 'X', 'X', ':', 'X', 'X', '\0' };
-static uint8_t       nfc_payload_sw[32];
+static uint8_t       nfc_payload_sw[6 + sizeof(CONFIG_BT_DEVICE_NAME) + sizeof(APP_VERSION_EXTENDED_STRING)];
 static uint8_t       nfc_payload_data[RE_F0_DATA_LENGTH];
 static const uint8_t nfc_payload_id_lang_code[]   = { 'i', 'd' };
 static const uint8_t nfc_payload_mac_lang_code[]  = { 'a', 'd' };
@@ -179,7 +180,7 @@ bool
 nfc_init(const uint64_t mac)
 {
 #if USE_NFC
-    snprintf(nfc_payload_sw, sizeof(nfc_payload_sw), "SW: %s v%s", CONFIG_BT_DEVICE_NAME, APP_VERSION_STRING);
+    snprintf(nfc_payload_sw, sizeof(nfc_payload_sw), "SW: %s v%s", CONFIG_BT_DEVICE_NAME, app_fw_ver_get());
 
     const uint64_t device_id = get_device_id();
     snprintf(

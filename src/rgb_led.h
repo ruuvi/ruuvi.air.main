@@ -19,6 +19,9 @@ void
 rgb_led_deinit(void);
 
 bool
+rgb_led_is_lp5810_ready(void);
+
+bool
 rgb_led_set_color(const rgb_led_color_t* const p_color);
 
 bool

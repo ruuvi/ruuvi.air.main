@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "ruuvi_endpoint_6.h"
+#include "sen66_i2c.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -81,6 +82,18 @@ sen66_wrap_read_measured_values(sen66_wrap_measurement_t* const p_measurement);
 
 bool
 sen66_wrap_set_temperature_offset(int16_t offset, int16_t slope, uint16_t time_constant, uint16_t slot);
+
+bool
+sen66_wrap_get_voc_algorithm_tuning_parameters(voc_algorithm_tuning_parameters_t* const p_tuning_params);
+
+bool
+sen66_wrap_set_voc_algorithm_tuning_parameters(const voc_algorithm_tuning_parameters_t* const p_tuning_params);
+
+bool
+sen66_wrap_get_ambient_pressure(uint16_t* const p_pressure_hpa);
+
+bool
+sen66_wrap_set_ambient_pressure(const uint16_t pressure_hpa);
 
 bool
 sen66_wrap_device_reset(void);

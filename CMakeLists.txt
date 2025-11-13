@@ -20,20 +20,7 @@ include("${MOD_DIR}/git_describe_tag.cmake")
 SET(TAG_PREFIX "v")
 SET(TAG_WORK_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-set(GENERATED_VERSION_BIN "${CMAKE_CURRENT_BINARY_DIR}/VERSION")
 set(GENERATED_VERSION "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
-# Generate VERSION on every build (ALWAYS re-run keeps it current w/ HEAD and dirty state)
-add_custom_target(gen_version_always ALL
-  COMMAND ${CMAKE_COMMAND} -DOUT=${GENERATED_VERSION_BIN}
-                           -DWORKDIR=${TAG_WORK_DIR}
-                           -DTAG_PREFIX=${TAG_PREFIX}
-                           -P ${MOD_DIR}/gen_version.cmake
-  # Sync to source tree only if content changed
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          "${GENERATED_VERSION_BIN}" "${GENERATED_VERSION}"
-  COMMENT "Generating VERSION (always) and syncing if changed"
-  VERBATIM
-)
 
 set(VH ${PROJECT_BINARY_DIR}/zephyr/include/generated/zephyr/app_version.h)
 set(MYVH ${PROJECT_BINARY_DIR}/zephyr/include/generated/zephyr/app_version.override.h)
@@ -50,7 +37,7 @@ add_custom_command(
     -DAPP_BUILD_VERSION=${APP_BUILD_VERSION}
     -DCMAKE_MODULE_PATH=${MOD_DIR}
     -P ${ZEPHYR_BASE}/cmake/gen_version_h.cmake
-  DEPENDS gen_version_always ${GENERATED_VERSION} ${git_dependency}
+  DEPENDS ${GENERATED_VERSION} ${git_dependency}
   COMMAND_EXPAND_LISTS
 )
 
@@ -66,9 +53,9 @@ add_custom_target(override_version_h ALL
   DEPENDS ${MYVH}.stamp)
 
 # Make sure all generated headers wait for our override too
-add_dependencies(zephyr_generated_headers gen_version_always override_version_h)
+add_dependencies(zephyr_generated_headers override_version_h)
 # Make the Zephyr 'app' target depend on the VERSION file and generted header
-add_dependencies(app gen_version_always override_version_h)
+add_dependencies(app override_version_h)
 
 
 add_subdirectory(components/ruuvi.endpoints.c)
@@ -85,10 +72,14 @@ target_sources(app PRIVATE
         src/app_early_init.c
         src/app_ext_flash_and_sensors_power.c
         src/app_ext_flash_and_sensors_power.h
+        src/app_fw_ver.c
+        src/app_fw_ver.h
         src/app_gpio_input.c
         src/app_gpio_input.h
         src/app_led.c
         src/app_led.h
+        src/app_mcumgr_mgmt_callbacks.c
+        src/app_mcumgr_mgmt_callbacks.h
         src/app_rtc.c
         src/app_rtc.h
         src/app_segger_rtt.c
@@ -97,6 +88,8 @@ target_sources(app PRIVATE
         src/app_settings.h
         src/app_supercap.c
         src/app_supercap.h
+        src/app_watchdog.c
+        src/app_watchdog.h
         src/avg_accum.c
         src/avg_accum.h
         src/ble_adv.c

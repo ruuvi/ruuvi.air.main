@@ -6,7 +6,7 @@ rsource "drivers/Kconfig"
 
 config RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT
 	int "Delay in ms before reboot after pressing the pinhole button"
-	default 3000
+	default 5000
 	help
 	  Delay in ms before reboot after pressing the pinhole button.
 
@@ -94,6 +94,22 @@ config RUUVI_AIR_USE_SENSOR_DPS310
 config RUUVI_AIR_USE_SENSOR_OPT4060
 	bool "Enable use of OPT4060 sensor for ambient light measurements"
 	default y
+
+config RUUVI_AIR_SEN66_VOC_ALG_TUNING_PARAMS_LEARNING_TIME_OFFSET_HOURS
+	int "SEN66 VOC algorithm learning time offset (hours)"
+	default 12
+	help
+	  Time constant to estimate the VOC algorithm offset from the history in hours.
+	  Past events will be forgotten after about twice the learning time.
+	  Allowed values are in range 1..1000.
+
+config RUUVI_AIR_SEN66_VOC_ALG_TUNING_PARAMS_LEARNING_TIME_GAIN_HOURS
+	int "SEN66 VOC algorithm learning time gain (hours)"
+	default 12
+	help
+	  Time constant to estimate the VOC algorithm gain from the history in hours.
+	  Past events will be forgotten after about twice the learning time.
+	  Allowed values are in range 1..1000.
 
 config RUUVI_AIR_OPT4060_LUMINOSITY_MULTIPLIER
 	int "OPT4060 luminosity multiplier"

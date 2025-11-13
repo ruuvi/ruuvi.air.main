@@ -496,6 +496,29 @@ mgmt_cb_on_env_grp_img(const uint32_t event, void* data, size_t data_size)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_MCUMGR_GRP_FS)
+static void
+mgmt_cb_on_env_grp_fs(const uint32_t event, void* data, size_t data_size)
+{
+    TLOG_WRN("MGMT_EVT_GRP_FS: event 0x%08x", event);
+    switch (event)
+    {
+        case MGMT_EVT_OP_FS_MGMT_FILE_ACCESS:
+        {
+            struct fs_mgmt_file_access* p_file_access = (struct fs_mgmt_file_access*)data;
+            TLOG_WRN(
+                "MGMT_EVT_OP_FS_MGMT_FILE_ACCESS: filename=%s, access=0x%02x",
+                p_file_access->filename,
+                p_file_access->access);
+            break;
+        }
+        default:
+            LOG_HEXDUMP_WRN(data, data_size, "MGMT_EVT_GRP_FS: Unknown event, Data:");
+            break;
+    }
+}
+#endif
+
 static enum mgmt_cb_return
 ble_adv_mgmt_cb(
     uint32_t            event,
@@ -517,13 +540,19 @@ ble_adv_mgmt_cb(
         else if (event_grp == MGMT_EVT_GRP_OS)
         {
             mgmt_cb_on_env_grp_os(event, data, data_size);
-#if IS_ENABLED(CONFIG_IMG_MANAGER)
         }
+#if IS_ENABLED(CONFIG_IMG_MANAGER)
         else if (event_grp == MGMT_EVT_GRP_IMG)
         {
             mgmt_cb_on_env_grp_img(event, data, data_size);
-#endif
         }
+#endif
+#if IS_ENABLED(CONFIG_MCUMGR_GRP_FS)
+        else if (event_grp == MGMT_EVT_GRP_FS)
+        {
+            mgmt_cb_on_env_grp_fs(event, data, data_size);
+        }
+#endif
         else
         {
             TLOG_WRN("Unknown event group, event 0x%08x", event);

@@ -18,17 +18,17 @@ extern "C" {
 
 typedef struct hist_log_record_data_t
 {
-    uint8_t buf[RE_LOG_WRITE_AIRQ_RECORD_LEN];
+    uint8_t buf[RE_LOG_WRITE_AIRQ_RECORD_LEN - RE_LOG_WRITE_AIRQ_PAYLOAD_OFS];
 } hist_log_record_data_t;
 
 typedef struct hist_log_record_t
 {
     uint32_t               timestamp; // Offset: 0
     hist_log_record_data_t data;      // Offset: 4
-    uint8_t                crc16[2];  // Offset: 42
+    uint8_t                crc16[2];  // Offset: 38
 } hist_log_record_t;
 
-_Static_assert(sizeof(hist_log_record_t) == 44, "hist_log_record_t record size is not 44 bytes");
+_Static_assert(sizeof(hist_log_record_t) == 40, "hist_log_record_t record size is not 40 bytes");
 
 typedef bool (*hist_log_record_handler_t)(
     const uint32_t                      timestamp,

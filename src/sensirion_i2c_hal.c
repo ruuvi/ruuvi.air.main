@@ -38,7 +38,7 @@
 #include "sensirion_config.h"
 #include "sensirion_i2c_hal.h"
 
-LOG_MODULE_REGISTER(SENSIRIAL_I2C_HAL, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(SENSIRION_I2C_HAL, LOG_LEVEL_INF);
 
 #if DT_NODE_EXISTS(DT_NODELABEL(i2c0)) && DT_NODE_HAS_STATUS(DT_NODELABEL(i2c0), okay)
 
@@ -100,7 +100,10 @@ sensirion_i2c_hal_free(void)
 int8_t
 sensirion_i2c_hal_read(uint8_t address, uint8_t* data, uint8_t count)
 {
-    return i2c_read(i2c_dev, data, count, address);
+    const int8_t res = i2c_read(i2c_dev, data, count, address);
+    LOG_DBG("I2C read %d bytes from 0x%02X: res=%d", count, address, res);
+    LOG_HEXDUMP_DBG(data, count, "data");
+    return res;
 }
 
 /**
@@ -117,6 +120,8 @@ sensirion_i2c_hal_read(uint8_t address, uint8_t* data, uint8_t count)
 int8_t
 sensirion_i2c_hal_write(uint8_t address, const uint8_t* data, uint8_t count)
 {
+    LOG_DBG("I2C write %d bytes to 0x%02X", count, address);
+    LOG_HEXDUMP_DBG(data, count, "data");
     return i2c_write(i2c_dev, data, count, address);
 }
 

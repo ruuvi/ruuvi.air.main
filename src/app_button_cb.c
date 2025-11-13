@@ -14,13 +14,11 @@
 #include "app_settings.h"
 #include "app_led.h"
 #include "utils.h"
+#include "app_watchdog.h"
 
 LOG_MODULE_DECLARE(GPIO, LOG_LEVEL_INF);
 
-#define RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT (CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT)
-
-#define RUUVI_AIR_BUTTON_NUM_PRESSES_TO_ACTIVATE_FIRMWARE_LOADER (3)
-#define RUUVI_AIR_BUTTON_PRESS_CNT_DELAY_MS                      (1000)
+#define RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT (CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT - 500)
 
 #define RUUVI_AIR_BUTTON_DELAY_FLUSH_LOGS_MS (100)
 
@@ -48,6 +46,7 @@ static bool g_flag_switching_led_mode_in_progress;
 static void
 button_workq_cb_pressed(struct k_work* item)
 {
+    app_watchdog_feed();
     app_led_mutex_lock();
     app_button_set_pressed();
     app_led_red_on();
@@ -67,6 +66,7 @@ button_workq_cb_pressed(struct k_work* item)
 static void
 button_workq_cb_released(struct k_work* item)
 {
+    app_watchdog_feed();
     app_led_mutex_lock();
     app_led_red_off();
     app_led_green_off();
@@ -85,14 +85,18 @@ button_workq_cb_changed_led_mode(struct k_work* item)
 static void
 button_workq_cb_timeout(struct k_work* item)
 {
-    LOG_WRN("Button %d ms timeout - rebooting...", RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT);
+    LOG_WRN("Button %d ms timeout - rebooting...", CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT);
     k_work_reschedule(&g_button_work_delayable_reboot, K_MSEC(RUUVI_AIR_BUTTON_DELAY_FLUSH_LOGS_MS));
 }
 
 static void
 button_workq_cb_reboot(struct k_work* item)
 {
+#if CONFIG_DEBUG
     sys_reboot(SYS_REBOOT_COLD);
+#else
+    app_watchdog_force_trigger();
+#endif
 }
 
 static void

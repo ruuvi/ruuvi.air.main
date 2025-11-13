@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "ruuvi_air_types.h"
 #include "sensors.h"
 #include "hist_log.h"
 
@@ -18,10 +19,10 @@ void
 moving_avg_init(void);
 
 bool
-moving_avg_append(const sensors_measurement_t* p_measurement);
+moving_avg_append(const sensors_measurement_t* const p_measurement);
 
 hist_log_record_data_t
-moving_avg_get_accum(void);
+moving_avg_get_accum(const measurement_cnt_t measurement_cnt, const radio_mac_t radio_mac);
 
 #ifdef __cplusplus
 }

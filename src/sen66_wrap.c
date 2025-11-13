@@ -228,6 +228,74 @@ sen66_wrap_set_temperature_offset(int16_t offset, int16_t slope, uint16_t time_c
 }
 
 bool
+sen66_wrap_get_voc_algorithm_tuning_parameters(voc_algorithm_tuning_parameters_t* const p_tuning_params)
+{
+    bool flag_success = false;
+    for (uint32_t i = 0; i < SEN66_WRAP_NUM_RETRIES; ++i)
+    {
+        const int16_t error = sen66_get_voc_algorithm_tuning_parameters(p_tuning_params);
+        if (NO_ERROR == error)
+        {
+            flag_success = true;
+            break;
+        }
+        LOG_ERR("%s[retry=%d]: err=%d", "sen66_get_voc_algorithm_tuning_parameters", i, error);
+    }
+    return flag_success;
+}
+
+bool
+sen66_wrap_set_voc_algorithm_tuning_parameters(const voc_algorithm_tuning_parameters_t* const p_tuning_params)
+{
+    bool flag_success = false;
+    for (uint32_t i = 0; i < SEN66_WRAP_NUM_RETRIES; ++i)
+    {
+        const int16_t error = sen66_set_voc_algorithm_tuning_parameters(p_tuning_params);
+        if (NO_ERROR == error)
+        {
+            flag_success = true;
+            break;
+        }
+        LOG_ERR("%s[retry=%d]: err=%d", "sen66_set_voc_algorithm_tuning_parameters", i, error);
+    }
+    return flag_success;
+}
+
+bool
+sen66_wrap_get_ambient_pressure(uint16_t* const p_pressure_hpa)
+{
+    bool flag_success = false;
+    for (uint32_t i = 0; i < SEN66_WRAP_NUM_RETRIES; ++i)
+    {
+        const int16_t error = sen66_get_ambient_pressure(p_pressure_hpa);
+        if (NO_ERROR == error)
+        {
+            flag_success = true;
+            break;
+        }
+        LOG_ERR("%s[retry=%d]: err=%d", "sen66_get_ambient_pressure", i, error);
+    }
+    return flag_success;
+}
+
+bool
+sen66_wrap_set_ambient_pressure(const uint16_t pressure_hpa)
+{
+    bool flag_success = false;
+    for (uint32_t i = 0; i < SEN66_WRAP_NUM_RETRIES; ++i)
+    {
+        const int16_t error = sen66_set_ambient_pressure(pressure_hpa);
+        if (NO_ERROR == error)
+        {
+            flag_success = true;
+            break;
+        }
+        LOG_ERR("%s[retry=%d]: err=%d", "sen66_set_ambient_pressure", i, error);
+    }
+    return flag_success;
+}
+
+bool
 sen66_wrap_check(void)
 {
     if (!sen66_wrap_device_reset())

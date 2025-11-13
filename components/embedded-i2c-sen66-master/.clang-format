@@ -2,6 +2,7 @@
 Language: Cpp
 BasedOnStyle: LLVM
 IndentWidth: 4
+SortIncludes: Never
 AlignAfterOpenBracket: Align
 AllowShortBlocksOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false

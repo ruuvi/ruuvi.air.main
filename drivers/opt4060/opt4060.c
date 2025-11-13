@@ -99,40 +99,6 @@ enum opt4060_e {
 
 #define OPT4060_READ_CHAN_CNT_MAX_RETRIES (3)
 
-static enum opt4060_channel
-opt4060_conv_sensor_channel_to_idx(const enum sensor_channel sensor_chan)
-{
-	enum opt4060_channel chan_idx = OPT4060_CHANNEL_NUM;
-	enum opt4060_e reg = OPT4060_REG_CH0_MSB;
-	switch (sensor_chan) {
-	case SENSOR_CHAN_RED:
-		reg = OPT4060_REG_CH0_MSB;
-		chan_idx = OPT4060_CHANNEL_RED;
-		break;
-	case SENSOR_CHAN_GREEN:
-		reg = OPT4060_REG_CH1_MSB;
-		chan_idx = OPT4060_CHANNEL_GREEN;
-		break;
-	case SENSOR_CHAN_BLUE:
-		reg = OPT4060_REG_CH2_MSB;
-		chan_idx = OPT4060_CHANNEL_BLUE;
-		break;
-	case SENSOR_CHAN_LIGHT:
-		reg = OPT4060_REG_CH3_MSB;
-		chan_idx = OPT4060_CHANNEL_LUMINOSITY;
-		break;
-	default:
-		break;
-	}
-	return chan_idx;
-}
-
-static enum opt4060_e opt4060_conv_chan_idx_to_reg_addr(enum opt4060_channel chan_idx)
-{
-	enum opt4060_e reg = (OPT4060_REG_CH1_MSB - OPT4060_REG_CH0_MSB) * chan_idx;
-	return reg;
-}
-
 int opt4060_i2c_write_read(const struct device *i2c_dev, uint16_t addr, const void *write_buf,
 			   size_t num_write, void *read_buf, size_t num_read)
 {
@@ -271,6 +237,7 @@ static void opt4060_set_invalid_for_all_channels(const struct device *const p_de
 	}
 }
 
+#if CONFIG_OPT4060_OP_MODE_ONESHOT
 static void opt4060_set_overflow_for_all_channels(const struct device *const p_dev)
 {
 	struct opt4060_data *const p_data = p_dev->data;
@@ -281,6 +248,7 @@ static void opt4060_set_overflow_for_all_channels(const struct device *const p_d
 		p_data->ch_data[chan].cnt = 0;
 	}
 }
+#endif // CONFIG_OPT4060_OP_MODE_ONESHOT
 
 bool opt4060_read_all_channels(const struct device *const p_dev)
 {

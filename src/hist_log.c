@@ -208,8 +208,8 @@ hist_log_init(const bool is_rtc_valid)
 
 #if HIST_LOG_TEST_FILL_ALL_STORAGE
 
-    uint32_t timestamp = time(NULL);
-    uint32_t cnt       = 0;
+    uint32_t        timestamp = time(NULL);
+    re_e1_seq_cnt_t cnt       = 0;
     TLOG_WRN("Fill hist log storage with mock records...");
     while (!g_hist_log_full)
     {
@@ -339,6 +339,8 @@ hist_log_read_records(hist_log_record_handler_t p_cb, void* const p_user_data, c
         return true;
     }
 
+    uint32_t read_err_cnt = 0;
+    uint32_t crc_err_cnt  = 0;
     while (0 == rc)
     {
         const off_t read_off = loc.fe_sector->fs_off + loc.fe_data_off;
@@ -353,32 +355,50 @@ hist_log_read_records(hist_log_record_handler_t p_cb, void* const p_user_data, c
         rc = flash_area_read(p_fcb->fap, read_off, &record, sizeof(record));
         if (0 != rc)
         {
-            TLOG_ERR("flash_area_read failed: %d", rc);
-            return false;
-        }
-        LOG_HEXDUMP_DBG(&record, sizeof(record), "Read record");
-
-        if (0 != (crc16_ccitt(0xFFFFU, (const uint8_t*)&record, sizeof(record))))
-        {
-            TLOG_ERR(
-                "CRC16 check failed: read_off=%x, fs_off=%x, fe_data_off=%x",
-                (unsigned)read_off,
-                (unsigned)loc.fe_sector->fs_off,
-                (unsigned)loc.fe_data_off);
+            read_err_cnt += 1;
+            if (read_err_cnt < 10)
+            {
+                TLOG_ERR("flash_area_read failed: %d", rc);
+            }
+            else if (10 == read_err_cnt)
+            {
+                TLOG_ERR("Too many read errors, suppressing further messages");
+            }
         }
         else
         {
-            if (record.timestamp >= timestamp_start)
+            LOG_HEXDUMP_DBG(&record, sizeof(record), "Read record");
+
+            if (0 != (crc16_ccitt(0xFFFFU, (const uint8_t*)&record, sizeof(record))))
             {
-                TLOG_DBG("Read log record: time=%" PRIu32 " > start=%" PRIu32, record.timestamp, timestamp_start);
-                if (!p_cb(record.timestamp, &record.data, p_user_data))
+                crc_err_cnt += 1;
+                if (crc_err_cnt < 10)
                 {
-                    return false;
+                    TLOG_ERR(
+                        "CRC16 check failed: read_off=%x, fs_off=%x, fe_data_off=%x",
+                        (unsigned)read_off,
+                        (unsigned)loc.fe_sector->fs_off,
+                        (unsigned)loc.fe_data_off);
+                }
+                else if (10 == crc_err_cnt)
+                {
+                    TLOG_ERR("Too many CRC16 errors, suppressing further messages");
                 }
             }
             else
             {
-                TLOG_DBG("Skip log record: time=%" PRIu32 " < start=%" PRIu32, record.timestamp, timestamp_start);
+                if (record.timestamp >= timestamp_start)
+                {
+                    TLOG_DBG("Read log record: time=%" PRIu32 " > start=%" PRIu32, record.timestamp, timestamp_start);
+                    if (!p_cb(record.timestamp, &record.data, p_user_data))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    TLOG_DBG("Skip log record: time=%" PRIu32 " < start=%" PRIu32, record.timestamp, timestamp_start);
+                }
             }
         }
 

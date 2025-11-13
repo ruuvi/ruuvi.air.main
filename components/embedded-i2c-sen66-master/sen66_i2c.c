@@ -37,9 +37,12 @@
  */
 
 #include "sen66_i2c.h"
+#include <zephyr/logging/log.h>
 #include "sensirion_common.h"
 #include "sensirion_i2c.h"
 #include "sensirion_i2c_hal.h"
+
+LOG_MODULE_DECLARE(SENSIRION_I2C_HAL, LOG_LEVEL_INF);
 
 #define sensirion_hal_sleep_us sensirion_i2c_hal_sleep_usec
 
@@ -252,26 +255,129 @@ int16_t sen66_get_version(uint8_t* firmware_major, uint8_t* firmware_minor,
 }
 
 int16_t sen66_set_temperature_offset(int16_t offset, int16_t slope,
-                             uint16_t time_constant, uint16_t slot) {
+                                     uint16_t time_constant, uint16_t slot) {
     int16_t local_error = NO_ERROR;
     uint8_t* buffer_ptr = communication_buffer;
     uint16_t local_offset = 0;
     local_offset =
         sensirion_i2c_add_command16_to_buffer(buffer_ptr, local_offset, 0x60B2);
-    local_offset = sensirion_i2c_add_int16_t_to_buffer(
-        buffer_ptr, local_offset, slope);
-    local_offset = sensirion_i2c_add_int16_t_to_buffer(
-        buffer_ptr, local_offset, offset);
+    local_offset =
+        sensirion_i2c_add_int16_t_to_buffer(buffer_ptr, local_offset, slope);
+    local_offset =
+        sensirion_i2c_add_int16_t_to_buffer(buffer_ptr, local_offset, offset);
     local_offset = sensirion_i2c_add_uint16_t_to_buffer(
         buffer_ptr, local_offset, time_constant);
-    local_offset = sensirion_i2c_add_uint16_t_to_buffer(
-        buffer_ptr, local_offset, slot);
+    local_offset =
+        sensirion_i2c_add_uint16_t_to_buffer(buffer_ptr, local_offset, slot);
 
     local_error =
         sensirion_i2c_write_data(_i2c_address, buffer_ptr, local_offset);
     if (local_error != NO_ERROR) {
         return local_error;
     }
+    sensirion_i2c_hal_sleep_usec(20 * 1000);
+    return local_error;
+}
+
+int16_t sen66_get_voc_algorithm_tuning_parameters(
+    voc_algorithm_tuning_parameters_t* const p_tuning_params) {
+    int16_t local_error = NO_ERROR;
+    uint8_t* buffer_ptr = communication_buffer;
+    uint16_t local_offset = 0;
+    local_offset =
+        sensirion_i2c_add_command16_to_buffer(buffer_ptr, local_offset, 0x60d0);
+    local_error =
+        sensirion_i2c_write_data(_i2c_address, buffer_ptr, local_offset);
+    if (local_error != NO_ERROR) {
+        return local_error;
+    }
+    sensirion_i2c_hal_sleep_usec(20 * 1000);
+    local_error = sensirion_i2c_read_data_inplace(_i2c_address, buffer_ptr, 12);
+    if (local_error != NO_ERROR) {
+        return local_error;
+    }
+    LOG_HEXDUMP_DBG(buffer_ptr, 12, "VOC tuning params raw data");
+    int offset = 0;
+    p_tuning_params->index_offset =
+        sensirion_common_bytes_to_int16_t(&buffer_ptr[offset]);
+    offset += 2;
+    p_tuning_params->learning_time_offset_hours =
+        sensirion_common_bytes_to_int16_t(&buffer_ptr[offset]);
+    offset += 2;
+    p_tuning_params->learning_time_gain_hours =
+        sensirion_common_bytes_to_int16_t(&buffer_ptr[offset]);
+    offset += 2;
+    p_tuning_params->gating_max_duration_minutes =
+        sensirion_common_bytes_to_int16_t(&buffer_ptr[offset]);
+    offset += 2;
+    p_tuning_params->std_initial =
+        sensirion_common_bytes_to_int16_t(&buffer_ptr[offset]);
+    offset += 2;
+    p_tuning_params->gain_factor =
+        sensirion_common_bytes_to_int16_t(&buffer_ptr[offset]);
+    return local_error;
+}
+
+int16_t sen66_set_voc_algorithm_tuning_parameters(
+    const voc_algorithm_tuning_parameters_t* const p_tuning_params) {
+    int16_t local_error = NO_ERROR;
+    uint8_t* buffer_ptr = communication_buffer;
+    uint16_t local_offset = 0;
+    local_offset =
+        sensirion_i2c_add_command16_to_buffer(buffer_ptr, local_offset, 0x60d0);
+    local_offset = sensirion_i2c_add_int16_t_to_buffer(
+        buffer_ptr, local_offset, p_tuning_params->index_offset);
+    local_offset = sensirion_i2c_add_int16_t_to_buffer(
+        buffer_ptr, local_offset, p_tuning_params->learning_time_offset_hours);
+    local_offset = sensirion_i2c_add_int16_t_to_buffer(
+        buffer_ptr, local_offset, p_tuning_params->learning_time_gain_hours);
+    local_offset = sensirion_i2c_add_int16_t_to_buffer(
+        buffer_ptr, local_offset, p_tuning_params->gating_max_duration_minutes);
+    local_offset = sensirion_i2c_add_int16_t_to_buffer(
+        buffer_ptr, local_offset, p_tuning_params->std_initial);
+    local_offset = sensirion_i2c_add_int16_t_to_buffer(
+        buffer_ptr, local_offset, p_tuning_params->gain_factor);
+
+    local_error =
+        sensirion_i2c_write_data(_i2c_address, buffer_ptr, local_offset);
+    if (local_error != NO_ERROR) {
+        return local_error;
+    }
+    sensirion_i2c_hal_sleep_usec(20 * 1000);
+    return local_error;
+}
+
+int16_t sen66_get_ambient_pressure(uint16_t* p_pressure_hpa) {
+    int16_t local_error = NO_ERROR;
+    uint8_t* buffer_ptr = communication_buffer;
+    uint16_t local_offset = 0;
+    local_offset =
+        sensirion_i2c_add_command16_to_buffer(buffer_ptr, local_offset, 0x6720);
+    local_error =
+        sensirion_i2c_write_data(_i2c_address, buffer_ptr, local_offset);
+    if (local_error != NO_ERROR) {
+        return local_error;
+    }
+    sensirion_i2c_hal_sleep_usec(20 * 1000);
+    local_error = sensirion_i2c_read_data_inplace(_i2c_address, buffer_ptr, 2);
+    if (local_error != NO_ERROR) {
+        return local_error;
+    }
+    *p_pressure_hpa = sensirion_common_bytes_to_uint16_t(&buffer_ptr[0]);
+    return local_error;
+}
+
+int16_t sen66_set_ambient_pressure(const uint16_t pressure_hpa) {
+    int16_t local_error = NO_ERROR;
+    uint8_t* buffer_ptr = communication_buffer;
+    uint16_t local_offset = 0;
+    local_offset =
+        sensirion_i2c_add_command16_to_buffer(buffer_ptr, local_offset, 0x6720);
+    local_offset = sensirion_i2c_add_int16_t_to_buffer(buffer_ptr, local_offset,
+                                                       pressure_hpa);
+
+    local_error =
+        sensirion_i2c_write_data(_i2c_address, buffer_ptr, local_offset);
     if (local_error != NO_ERROR) {
         return local_error;
     }

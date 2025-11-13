@@ -16,8 +16,8 @@ extern "C" {
 re_e1_data_t
 data_fmt_e1_init(
     const sensors_measurement_t* const p_measurement,
-    const uint32_t                     measurement_cnt,
-    const uint64_t                     radio_mac);
+    const re_e1_seq_cnt_t              seq_cnt,
+    const re_e1_mac_addr_t             radio_mac);
 
 #ifdef __cplusplus
 }

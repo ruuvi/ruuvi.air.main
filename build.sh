@@ -171,11 +171,23 @@ warn_default() {
   printf '0.0.0+0\n'
 }
 
-# Usage: ver=$(git_tag_to_semver mcuboot_v)   # -> "2.1.0+3"
-#        ver=$(git_tag_to_semver v)           # for the app
+# Usage:
+#   ver=$(git_tag_to_semver mcuboot_v)                 # -> "2.1.0+3"
+#   ver=$(git_tag_to_semver v . dev)                  # -> "1.0.3+1-dirty-dev"
+# Notes:
+#   - If you pass extraversion_suffix as "", nothing extra is appended.
+#   - If extraversion_suffix is non-empty and doesn't start with '-', a '-' is added.
 git_tag_to_semver() {
-  local prefix="${1:?usage: git_tag_to_semver <TAG_PREFIX>}"  # e.g. mcuboot_v | b0_v | v
+  local prefix="${1:?usage: git_tag_to_semver <TAG_PREFIX> [workdir=. ] [extraversion_suffix]}"  # e.g. mcuboot_v | b0_v | v
   local workdir="${2:-.}"
+  local extra_suffix="${3-}"  # optional; may be empty string
+
+  echo "### git_tag_to_semver: prefix='$prefix' workdir='$workdir' extra_suffix='$extra_suffix'" >&2
+
+  # normalize suffix: add leading '-' if provided and missing
+  if [[ -n "${extra_suffix}" && "${extra_suffix}" != -* ]]; then
+    extra_suffix="-${extra_suffix}"
+  fi
 
   # 1) get a describe string limited to tags that start with the prefix
   local desc
@@ -218,49 +230,174 @@ git_tag_to_semver() {
     warn_default; return 0
   fi
 
-  # 5) if no 4th numeric in the tag, fall back to commits-ahead from the full desc
+  # 5) if no 4th numeric in the tag, fall back to commits-ahead
   if (( have_tag_tweak == 0 )); then
-    if [[ "$desc" =~ -([0-9]+)-g[0-9a-fA-F]+ ]]; then
+    if [[ "$clean" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-([0-9]+)-g[0-9a-fA-F]+ ]]; then
       TWEAK="${BASH_REMATCH[1]}"
+      # cap at 255 only in the commits-ahead case
+      if (( TWEAK > 255 )); then
+        TWEAK=255
+      fi
     else
       TWEAK=0
     fi
   fi
 
+  # 6) Get extra version from the tag suffix (e.g. -rc1)
+  local extra_version=""
+  if [[ "$clean" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-[0-9]+-g[0-9a-fA-F]+(-.*)$ ]]; then
+    extra_version="${BASH_REMATCH[1]}"
+  else
+    if [[ "$clean" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-[0-9]+-g[0-9a-fA-F]+(-.*)$ ]]; then
+      extra_version="${BASH_REMATCH[1]}"
+    fi
+  fi
+
+  # 8) append optional extraversion_suffix (already normalized to start with '-' if non-empty)
+  local full_extra_version="${extra_suffix}${extra_version}"
+
   # 6) emit MAJOR.MINOR.PATCH+TWEAK
-  printf '%s.%s.%s+%s\n' "$MAJOR" "$MINOR" "$PATCH" "$TWEAK"
+  printf '%s.%s.%s+%s%s' "$MAJOR" "$MINOR" "$PATCH" "$TWEAK" "$full_extra_version"
 }
 
 
-# Usage: major=$(major_from_ver "1.2.3+4")
+# Usage: major=$(major_from_ver "1.2.3+4-dev")
 major_from_ver() {
   local ver="$1"
-  if [[ $ver =~ ^([0-9]+)\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
+  if [[ $ver =~ ^([0-9]{1,3})\.[0-9]{1,3}\.[0-9]{1,3}\+[0-9]{1,3} ]]; then
     printf "${BASH_REMATCH[1]}"
   else
     printf '0'
   fi
 }
 
-b0_ver=$(git_tag_to_semver b0_v)
-mcuboot_ver=$(git_tag_to_semver mcuboot_v)
-fwloader_ver=$(git_tag_to_semver fwloader_v)
-app_ver=$(git_tag_to_semver v)
+minor_from_ver() {
+  local ver="$1"
+  if [[ $ver =~ ^[0-9]{1,3}\.([0-9]{1,3})\.[0-9]{1,3}\+[0-9]{1,3} ]]; then
+    printf "${BASH_REMATCH[1]}"
+  else
+    printf '0'
+  fi
+}
 
-b0_major=$(major_from_ver "$b0_ver")
-mcuboot_major=$(major_from_ver "$mcuboot_ver")
-fwloader_major=$(major_from_ver "$fwloader_ver")
-app_major=$(major_from_ver "$app_ver")
+patch_from_ver() {
+  local ver="$1"
+  if [[ $ver =~ ^[0-9]{1,3}\.[0-9]{1,3}\.([0-9]{1,3})\+[0-9]{1,3} ]]; then
+    printf "${BASH_REMATCH[1]}"
+  else
+    printf '0'
+  fi
+}
 
-echo "B0 version: $b0_ver"
-echo "MCUBOOT version: $mcuboot_ver"
-echo "FWLOADER version: $fwloader_ver"
-echo "APP version: $app_ver"
+tweak_from_ver() {
+  local ver="$1"
+  if [[ $ver =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\+([0-9]{1,3}) ]]; then
+    printf "${BASH_REMATCH[1]}"
+  else
+    printf '0'
+  fi
+}
 
-echo "B0 major: $b0_major"
-echo "MCUBOOT major: $mcuboot_major"
-echo "FWLOADER major: $fwloader_major"
-echo "APP major: $app_major"
+
+# Usage: base=$(base_from_ver "1.2.3+4-dev")
+base_from_ver() {
+  local ver="$1"
+  if [[ "$ver" =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\+[0-9]{1,3}) ]]; then
+    printf "${BASH_REMATCH[1]}"
+  else
+    printf '0.0.0+0'
+  fi
+}
+
+# Usage: extra_ver=$(get_extra_ver "1.2.3+4-dev")
+get_extra_ver() {
+  local ver="$1"
+  if [[ $ver =~ -(.*)$ ]]; then
+    printf "${BASH_REMATCH[1]}"
+  else
+    printf ''
+  fi
+}
+
+if [ "$flag_prod" = true ]; then
+  extra_ver_suffix=""
+else
+  extra_ver_suffix="dev"
+fi
+
+
+b0_full_ver=$(git_tag_to_semver b0_v . $extra_ver_suffix)
+mcuboot_full_ver=$(git_tag_to_semver mcuboot_v . $extra_ver_suffix)
+fwloader_full_ver=$(git_tag_to_semver fwloader_v . $extra_ver_suffix)
+app_full_ver=$(git_tag_to_semver v . $extra_ver_suffix)
+
+b0_major_ver=$(major_from_ver "$b0_full_ver")
+mcuboot_major_ver=$(major_from_ver "$mcuboot_full_ver")
+fwloader_major_ver=$(major_from_ver "$fwloader_full_ver")
+app_major_ver=$(major_from_ver "$app_full_ver")
+
+b0_base_ver=$(base_from_ver "$b0_full_ver")
+mcuboot_base_ver=$(base_from_ver "$mcuboot_full_ver")
+fwloader_base_ver=$(base_from_ver "$fwloader_full_ver")
+app_base_ver=$(base_from_ver "$app_full_ver")
+
+b0_extra_ver=$(get_extra_ver "$b0_full_ver")
+mcuboot_extra_ver=$(get_extra_ver "$mcuboot_full_ver")
+fwloader_extra_ver=$(get_extra_ver "$fwloader_full_ver")
+app_extra_ver=$(get_extra_ver "$app_full_ver")
+
+echo "B0 version       : $b0_full_ver"
+echo "MCUBOOT version  : $mcuboot_full_ver"
+echo "FWLOADER version : $fwloader_full_ver"
+echo "APP version      : $app_full_ver"
+
+echo "B0 base ver       : $b0_base_ver"
+echo "MCUBOOT base ver  : $mcuboot_base_ver"
+echo "FWLOADER base ver : $fwloader_base_ver"
+echo "APP base ver      : $app_base_ver"
+
+echo "B0 major ver       : $b0_major_ver"
+echo "MCUBOOT major ver  : $mcuboot_major_ver"
+echo "FWLOADER major ver : $fwloader_major_ver"
+echo "APP major ver      : $app_major_ver"
+
+echo "B0 extra ver       : $b0_extra_ver"
+echo "MCUBOOT extra ver  : $mcuboot_extra_ver"
+echo "FWLOADER extra ver : $fwloader_extra_ver"
+echo "APP extra ver      : $app_extra_ver"
+
+create_version_file() {
+  local out_path="${1}"
+  local full_ver="${2}"
+
+  if [[ -z "$out_path" ]]; then
+      echo "Error: You must provide a file path as an argument." >&2
+      return 1
+  fi
+  if [[ -z "$full_ver" ]]; then
+      echo "Error: You must provide a full version string." >&2
+      return 1
+  fi
+
+  local VERSION_MAJOR=$(major_from_ver "$full_ver")
+  local VERSION_MINOR=$(minor_from_ver "$full_ver")
+  local PATCHLEVEL=$(patch_from_ver "$full_ver")
+  local VERSION_TWEAK=$(tweak_from_ver "$full_ver")
+  local EXTRAVERSION=$(get_extra_ver "$full_ver")
+  {
+    printf 'VERSION_MAJOR = %s\n' "$VERSION_MAJOR"
+    printf 'VERSION_MINOR = %s\n' "$VERSION_MINOR"
+    printf 'PATCHLEVEL = %s\n'    "$PATCHLEVEL"
+    printf 'VERSION_TWEAK = %s\n' "$VERSION_TWEAK"
+    printf 'EXTRAVERSION = %s\n'  "$EXTRAVERSION"
+  } >"$out_path"
+  echo "Created version file at '$out_path'"
+}
+
+create_version_file "./b0_hook/VERSION" "$b0_full_ver"
+create_version_file "./mcuboot_hook/VERSION" "$mcuboot_full_ver"
+create_version_file "./fw_loader/VERSION" "$fwloader_full_ver"
+create_version_file "./VERSION" "$app_full_ver"
 
 BUILD_SUFFIX=""
 EXTRA_FLAGS=()
@@ -275,14 +412,14 @@ case "$build_mode" in
     EXTRA_FLAGS+=(
       -Db0_EXTRA_CONF_FILE="$PWD/sysbuild/b0.conf"
       -Dmcuboot_EXTRA_CONF_FILE="$PWD/sysbuild/mcuboot.conf"
-      -DSB_CONFIG_SECURE_BOOT_MCUBOOT_VERSION=\"${mcuboot_ver}\"
-      -Dfirmware_loader_CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION=\"${fwloader_ver}\"
-      -DCONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION=\"${app_ver}\"
+      -DSB_CONFIG_SECURE_BOOT_MCUBOOT_VERSION=\"${mcuboot_base_ver}\"
+      -Dfirmware_loader_CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION=\"${fwloader_base_ver}\"
+      -DCONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION=\"${app_base_ver}\"
 
-      -Db0_CONFIG_FW_INFO_FIRMWARE_VERSION=${b0_major}
-      -Dmcuboot_CONFIG_FW_INFO_FIRMWARE_VERSION=${mcuboot_major}
-      -Dfirmware_loader_CONFIG_FW_INFO_FIRMWARE_VERSION=${fwloader_major}
-      -DCONFIG_FW_INFO_FIRMWARE_VERSION=${app_major}
+      -Db0_CONFIG_FW_INFO_FIRMWARE_VERSION=${b0_major_ver}
+      -Dmcuboot_CONFIG_FW_INFO_FIRMWARE_VERSION=${mcuboot_major_ver}
+      -Dfirmware_loader_CONFIG_FW_INFO_FIRMWARE_VERSION=${fwloader_major_ver}
+      -DCONFIG_FW_INFO_FIRMWARE_VERSION=${app_major_ver}
 
       -Db0_EXTRA_DTC_OVERLAY_FILE="$PWD/sysbuild/b0/$BOARD_DTS_OVERLAY;$PWD/sysbuild/b0/dts_common.overlay"
       -Dmcuboot_EXTRA_DTC_OVERLAY_FILE="$PWD/sysbuild/mcuboot/$BOARD_DTS_OVERLAY;$PWD/sysbuild/mcuboot/dts_common.overlay"
@@ -359,31 +496,6 @@ west_args+=( "${EXTRA_FLAGS[@]}" )
 if [ -n "$extra_cflags" ]; then
   west_args+=( -DEXTRA_CFLAGS="$extra_cflags" )
 fi
-
-# Function to create a version file with zero version
-create_version_file() {
-    if [[ -z "$1" ]]; then
-        echo "Error: You must provide a file path as an argument." >&2
-        return 1
-    fi
-
-    local file_path="$1"
-
-    if [[ ! -f "$file_path" ]]; then
-        cat > "$file_path" << EOF
-VERSION_MAJOR = 0
-VERSION_MINOR = 0
-PATCHLEVEL = 0
-VERSION_TWEAK = 0
-EXTRAVERSION =
-EOF
-    fi
-}
-
-create_version_file "./b0_hook/VERSION"
-create_version_file "./mcuboot_hook/VERSION"
-create_version_file "./fw_loader/VERSION"
-create_version_file "./VERSION"
 
 if [ "$trace" = true ]; then
   echo "Tracing enabled – printing extra debug info…"

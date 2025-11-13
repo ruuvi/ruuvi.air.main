@@ -169,7 +169,7 @@ moving_avg_data_get_avg(const moving_avg_arr_t* const p_moving_avg)
 }
 
 bool
-moving_avg_append(const sensors_measurement_t* p_measurement)
+moving_avg_append(const sensors_measurement_t* const p_measurement)
 {
     const moving_avg_data_t data = {
         .ambient_temperature       = p_measurement->sen66.ambient_temperature,
@@ -204,7 +204,7 @@ moving_avg_append(const sensors_measurement_t* p_measurement)
 }
 
 hist_log_record_data_t
-moving_avg_get_accum(void)
+moving_avg_get_accum(const measurement_cnt_t measurement_cnt, const radio_mac_t radio_mac)
 {
     const moving_avg_data_t avg_data = moving_avg_data_get_avg(&g_moving_avg2);
 
@@ -223,19 +223,21 @@ moving_avg_get_accum(void)
         .shtc3_temperature               = NAN,
         .shtc3_humidity                  = NAN,
         .luminosity        = (INVALID_LUMINOSITY == avg_data.luminosity) ? NAN : (float)avg_data.luminosity,
-        .sound_inst_dba    = (INVALID_SOUND_DBA == avg_data.sound_inst_dba_x100) ? NAN
-                                                                                 : avg_data.sound_inst_dba_x100 / 100.0f,
-        .sound_avg_dba     = (INVALID_SOUND_DBA == avg_data.sound_avg_dba_x100) ? NAN
-                                                                                : avg_data.sound_avg_dba_x100 / 100.0f,
+        .sound_inst_dba    = (INVALID_SOUND_DBA == avg_data.sound_inst_dba_x100)
+                                 ? NAN
+                                 : (float)avg_data.sound_inst_dba_x100 / 100.0f,
+        .sound_avg_dba     = (INVALID_SOUND_DBA == avg_data.sound_avg_dba_x100)
+                                 ? NAN
+                                 : (float)avg_data.sound_avg_dba_x100 / 100.0f,
         .sound_peak_spl_db = (INVALID_SOUND_DBA == avg_data.sound_peak_spl_db_x100)
                                  ? NAN
-                                 : avg_data.sound_peak_spl_db_x100 / 100.0f,
+                                 : (float)avg_data.sound_peak_spl_db_x100 / 100.0f,
     };
 
-    const re_e1_data_t e1_data = data_fmt_e1_init(&measurement_avg, 0, 0);
+    const re_e1_data_t e1_data = data_fmt_e1_init(&measurement_avg, measurement_cnt, radio_mac);
     uint8_t            buffer[RE_E1_DATA_LENGTH];
     (void)re_e1_encode(buffer, &e1_data);
     hist_log_record_data_t record = { 0 };
-    memcpy(&record.buf, buffer, sizeof(record.buf));
+    memcpy(&record.buf[0], buffer, sizeof(record.buf));
     return record;
 }

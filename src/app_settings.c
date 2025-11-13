@@ -6,6 +6,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/settings/settings.h>
 #include "utils.h"
+#include "app_fw_ver.h"
 #include "app_version.h"
 #include "tlog.h"
 
@@ -49,8 +50,8 @@ settings_runtime_load(void)
     settings_runtime_set("bt/dis/sw", CONFIG_BT_DIS_SW_REV_STR, sizeof(CONFIG_BT_DIS_SW_REV_STR));
 #endif
 #if defined(CONFIG_BT_DIS_FW_REV)
-    char fw_ver_str[32];
-    snprintf(fw_ver_str, sizeof(fw_ver_str), "%s v%s", CONFIG_BT_DEVICE_NAME, APP_VERSION_STRING);
+    char fw_ver_str[sizeof(CONFIG_BT_DEVICE_NAME) + 2 + sizeof(APP_VERSION_EXTENDED_STRING)];
+    snprintf(fw_ver_str, sizeof(fw_ver_str), "%s v%s", CONFIG_BT_DEVICE_NAME, app_fw_ver_get());
     settings_runtime_set("bt/dis/fw", fw_ver_str, strlen(fw_ver_str) + 1);
 #endif
 #if defined(CONFIG_BT_DIS_HW_REV)

@@ -121,6 +121,38 @@ sensors_reinit_sen66(void)
         k_msleep(1000);
         return;
     }
+
+    LOG_INF("SEN66: Read VOC algorithm tuning parameters:");
+    voc_algorithm_tuning_parameters_t voc_alg_tuning_params = { 0 };
+    if (!sen66_wrap_get_voc_algorithm_tuning_parameters(&voc_alg_tuning_params))
+    {
+        LOG_ERR("%s failed", "sen66_wrap_get_voc_algorithm_tuning_parameters");
+        k_msleep(1000);
+        return;
+    }
+    LOG_INF("- index_offset                : %d", (int)voc_alg_tuning_params.index_offset);
+    LOG_INF("- learning_time_offset_hours  : %d", (int)voc_alg_tuning_params.learning_time_offset_hours);
+    LOG_INF("- learning_time_gain_hours    : %d", (int)voc_alg_tuning_params.learning_time_gain_hours);
+    LOG_INF("- gating_max_duration_minutes : %d", (int)voc_alg_tuning_params.gating_max_duration_minutes);
+    LOG_INF("- std_initial                 : %d", (int)voc_alg_tuning_params.std_initial);
+    LOG_INF("- gain_factor                 : %d", (int)voc_alg_tuning_params.gain_factor);
+
+    voc_alg_tuning_params.learning_time_offset_hours
+        = CONFIG_RUUVI_AIR_SEN66_VOC_ALG_TUNING_PARAMS_LEARNING_TIME_OFFSET_HOURS;
+    voc_alg_tuning_params.learning_time_gain_hours
+        = CONFIG_RUUVI_AIR_SEN66_VOC_ALG_TUNING_PARAMS_LEARNING_TIME_GAIN_HOURS;
+
+    LOG_INF("SEN66: Set VOC algorithm tuning parameters:");
+    LOG_INF("- learning_time_offset_hours  : %d", (int)voc_alg_tuning_params.learning_time_offset_hours);
+    LOG_INF("- learning_time_gain_hours    : %d", (int)voc_alg_tuning_params.learning_time_gain_hours);
+
+    if (!sen66_wrap_set_voc_algorithm_tuning_parameters(&voc_alg_tuning_params))
+    {
+        LOG_ERR("%s failed", "sen66_wrap_set_voc_algorithm_tuning_parameters");
+        k_msleep(1000);
+        return;
+    }
+
     LOG_INF("SEN66: Start continuous measurement");
     if (!sen66_wrap_start_continuous_measurement())
     {
@@ -355,8 +387,33 @@ sensors_poll(void)
             pressure.val2,
             (double)pressure_f);
         sensors_save_measurement_dps310(temperature_f, pressure_f);
+
+#if USE_SENSOR_SEN66 && !RUUVI_MOCK_MEASUREMENTS
+        if (!isnan(pressure_f))
+        {
+            const float pressure_f_hpa = pressure_f / 100.0f;
+            if ((pressure_f_hpa >= SEN66_AMBIENT_PRESSURE_MIN_HPA)
+                && (pressure_f_hpa <= SEN66_AMBIENT_PRESSURE_MAX_HPA))
+            {
+                const uint16_t pressure_hpa = (uint16_t)lrintf(pressure_f / 100.0f);
+                TLOG_INF("SEN66: Set ambient pressure: %u hPa", (unsigned)pressure_hpa);
+                if (!sen66_wrap_set_ambient_pressure(pressure_hpa))
+                {
+                    LOG_ERR("%s failed", "sen66_wrap_set_ambient_pressure");
+                }
+            }
+            else
+            {
+                TLOG_WRN(
+                    "DPS310: pressure out of range for SEN66: %f hPa, limit to valid range [%d..%d] hPa",
+                    (double)pressure_f_hpa,
+                    SEN66_AMBIENT_PRESSURE_MIN_HPA,
+                    SEN66_AMBIENT_PRESSURE_MAX_HPA);
+            }
+        }
+#endif // USE_SENSOR_SEN66 && !RUUVI_MOCK_MEASUREMENTS
     }
-#endif
+#endif // USE_SENSOR_DPS310
 
     const float luminosity = opt_rgb_ctrl_get_luminosity() * CONFIG_RUUVI_AIR_OPT4060_LUMINOSITY_MULTIPLIER;
     TLOG_INF("OPT4060: luminosity: %.03f", (double)luminosity);

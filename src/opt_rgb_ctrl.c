@@ -34,7 +34,9 @@ LOG_MODULE_REGISTER(opt_rgb_ctrl, LOG_LEVEL_INF);
 #define OPT_RGB_CTRL_MEASURE_GET_LUMINOSITY_NUM_CYCLES (50U)
 #define OPT_RGB_CTRL_MEASURE_GET_LUMINOSITY_MAX_CYCLES (100U)
 
-#define USE_SENSOR_OPT4060 (1 && IS_ENABLED(CONFIG_RUUVI_AIR_USE_SENSOR_OPT4060))
+#define USE_SENSOR_OPT4060 \
+    (1 && IS_ENABLED(CONFIG_OPT4060) && IS_ENABLED(CONFIG_RUUVI_AIR_USE_SENSOR_OPT4060) \
+     && DT_HAS_COMPAT_STATUS_OKAY(ti_opt4060))
 
 #define LUMINOSITY_ARRAY_SIZE \
     (CONFIG_RUUVI_AIR_OPT4060_NUM_MEASUREMENTS_PER_SECOND * CONFIG_RUUVI_AIR_OPT4060_LUMINOSITY_AVG_PERIOD)
@@ -184,6 +186,16 @@ static int64_t g_dbg_next_timestamp;
 static const struct device* const dev_opt4060 = DEVICE_DT_GET_ONE(ti_opt4060);
 #endif // USE_SENSOR_OPT4060
 
+static bool
+opt_rgb_ctrl_is_opt4060_ready(void)
+{
+#if USE_SENSOR_OPT4060
+    return device_is_ready(dev_opt4060);
+#else
+    return false;
+#endif // USE_SENSOR_OPT4060
+}
+
 void
 opt_rgb_ctrl_enable_led(const bool enable)
 {
@@ -271,6 +283,7 @@ measure_set_color_delay(int32_t* const p_max_time_per_call_ticks)
     return true;
 }
 
+#if USE_SENSOR_OPT4060
 static bool
 measure_opt4060_channel_get(int32_t* const p_max_time_per_call_ticks)
 {
@@ -301,33 +314,43 @@ measure_opt4060_channel_get(int32_t* const p_max_time_per_call_ticks)
     *p_max_time_per_call_ticks            = max_time_per_call_ticks;
     return true;
 }
+#endif // USE_SENSOR_OPT4060
 
 static void
 opt_rgb_measure_i2c_delays(void)
 {
     opt_rgb_ctrl_use_fast_speed_i2c(true);
-    if (!measure_set_color_delay(&g_rgb_led_set_color_delay_ticks))
+    if (rgb_led_is_lp5810_ready())
     {
-        TLOG_ERR("Failed to measure rgb_led_set_color delay");
+        if (!measure_set_color_delay(&g_rgb_led_set_color_delay_ticks))
+        {
+            TLOG_ERR("Failed to measure rgb_led_set_color delay");
+        }
+        else
+        {
+            TLOG_INF("LP5810 set_color delay: %d ticks", g_rgb_led_set_color_delay_ticks);
+        }
     }
-    else
+#if USE_SENSOR_OPT4060
+    if (opt_rgb_ctrl_is_opt4060_ready())
     {
-        TLOG_INF("LP5810 set_color delay: %d ticks", g_rgb_led_set_color_delay_ticks);
+        if (!measure_opt4060_channel_get(&g_rgb_led_get_luminosity_delay_ticks))
+        {
+            TLOG_ERR("Failed to measure rgb_led_get_luminosity delay");
+        }
+        else
+        {
+            TLOG_INF("OPT4060 get_luminosity delay: %d ticks", g_rgb_led_get_luminosity_delay_ticks);
+        }
     }
-    if (!measure_opt4060_channel_get(&g_rgb_led_get_luminosity_delay_ticks))
-    {
-        TLOG_ERR("Failed to measure rgb_led_get_luminosity delay");
-    }
-    else
-    {
-        TLOG_INF("OPT4060 get_luminosity delay: %d ticks", g_rgb_led_get_luminosity_delay_ticks);
-    }
+#endif // USE_SENSOR_OPT4060
     opt_rgb_ctrl_use_fast_speed_i2c(false);
 }
 
 static bool
 get_opt4060_measurement(const enum sensor_channel chan, float* const p_val, int* const p_cnt)
 {
+#if USE_SENSOR_OPT4060
     struct sensor_value val = { 0 };
     int                 res = sensor_channel_get(dev_opt4060, chan, &val);
     if (0 != res)
@@ -335,11 +358,13 @@ get_opt4060_measurement(const enum sensor_channel chan, float* const p_val, int*
         TLOG_DBG("sensor_channel_get failed: %d", res);
         return false;
     }
-
     *p_cnt = val.val2 & OPT4060_CHAN_CNT_MASK;
     val.val2 &= ~OPT4060_CHAN_CNT_MASK; // Clear counter bits
     *p_val = sensor_value_to_float(&val);
-
+#else
+    *p_cnt = 0;
+    *p_val = NAN;
+#endif
     return true;
 }
 
@@ -581,10 +606,11 @@ opt_rgb_ctrl_do_measure_luminosity_in_auto_mode(void)
 
     const int64_t time_start = k_uptime_ticks();
 
-    const opt_rgb_ctrl_error_e err = lock_led_and_measure_luminosity(
-        &luminosity,
-        &timestamp_led_turned_off,
-        &timestamp_led_turned_on);
+    opt_rgb_ctrl_error_e err = OPT_RGB_CTRL_ERROR_NONE;
+    if (opt_rgb_ctrl_is_opt4060_ready())
+    {
+        err = lock_led_and_measure_luminosity(&luminosity, &timestamp_led_turned_off, &timestamp_led_turned_on);
+    }
 
     const int64_t time_finish = k_uptime_ticks();
 
@@ -626,6 +652,10 @@ opt_rgb_ctrl_do_measure_luminosity_in_auto_mode(void)
 static float
 opt_rgb_ctrl_do_measure_luminosity_in_manual_mode(void)
 {
+    if (!opt_rgb_ctrl_is_opt4060_ready())
+    {
+        return NAN;
+    }
     for (int i = 0; i < 3; ++i)
     {
         float value = NAN;
@@ -876,6 +906,7 @@ opt_rgb_ctrl_thread(void* p1, void* p2, void* p3)
 
     g_led_turned_off = false;
 
+#if USE_SENSOR_OPT4060
     if (!device_is_ready(dev_opt4060))
     {
         TLOG_ERR("Device %s is not ready", dev_opt4060->name);
@@ -884,6 +915,7 @@ opt_rgb_ctrl_thread(void* p1, void* p2, void* p3)
     {
         TLOG_INF("Device %p: name %s", dev_opt4060, dev_opt4060->name);
     }
+#endif
 
     for (int i = 0; i < ARRAY_SIZE(g_opt4060_luminosity); ++i)
     {
@@ -892,18 +924,25 @@ opt_rgb_ctrl_thread(void* p1, void* p2, void* p3)
     g_opt4060_luminosity_idx = 0;
 
     opt_rgb_measure_i2c_delays();
+#if USE_SENSOR_OPT4060
     g_opt4060_one_chan_conv_time_ticks       = k_us_to_ticks_ceil32(opt4060_get_conv_time_us());
     g_opt4060_one_measurement_duration_ticks = opt4060_get_one_measurement_duration_ticks(dev_opt4060);
+#endif
 
     if (APP_SETTINGS_LED_MODE_AUTO != app_settings_get_led_mode())
     {
-        const uint32_t conv_time                 = 800;
-        g_opt4060_one_measurement_duration_ticks = k_ms_to_ticks_ceil32(conv_time);
-        TLOG_INF("Setting OPT4060 conversion time to %u ms", conv_time);
-        if (opt4060_configure_conv_time(dev_opt4060, OPT4060_REG_CONFIG_VAL_CONV_TIME_800_MS) < 0)
+#if USE_SENSOR_OPT4060
+        if (opt_rgb_ctrl_is_opt4060_ready())
         {
-            TLOG_ERR("Failed to configure conversion time");
+            const uint32_t conv_time                 = 800;
+            g_opt4060_one_measurement_duration_ticks = k_ms_to_ticks_ceil32(conv_time);
+            TLOG_INF("Setting OPT4060 conversion time to %u ms", conv_time);
+            if (opt4060_configure_conv_time(dev_opt4060, OPT4060_REG_CONFIG_VAL_CONV_TIME_800_MS) < 0)
+            {
+                TLOG_ERR("Failed to configure conversion time");
+            }
         }
+#endif // USE_SENSOR_OPT4060
     }
 
     k_timer_start(&opt_rgb_led_ctrl_cycle, K_MSEC(0), K_MSEC(OPT_RGB_CTRL_CYCLE_MS));
