@@ -396,9 +396,13 @@ sen66_wrap_conv_raw_to_float_pm(const uint16_t raw_pm)
         return NAN;
     }
     const re_float result = (float)raw_pm / SEN66_SCALE_FACTOR_PM;
-    if ((result < RE_6_PM_MIN) || (result > RE_6_PM_MAX))
+    if (result < RE_6_PM_MIN)
     {
-        return NAN;
+        return RE_6_PM_MIN;
+    }
+    if (result > RE_6_PM_MAX)
+    {
+        return RE_6_PM_MAX;
     }
     return result;
 }
@@ -411,9 +415,13 @@ sen66_wrap_conv_raw_to_float_humidity(const int16_t raw_humidity)
         return NAN;
     }
     const re_float result = (float)raw_humidity / SEN66_SCALE_FACTOR_HUMIDITY;
-    if ((result < RE_6_HUMIDITY_MIN) || (result > RE_6_HUMIDITY_MAX))
+    if (result < RE_6_HUMIDITY_MIN)
     {
-        return NAN;
+        return RE_6_HUMIDITY_MIN;
+    }
+    if (result > RE_6_HUMIDITY_MAX)
+    {
+        return RE_6_HUMIDITY_MAX;
     }
     return result;
 }
@@ -426,9 +434,13 @@ sen66_wrap_conv_raw_to_float_temperature(const int16_t temperature)
         return NAN;
     }
     const re_float result = (float)temperature / SEN66_SCALE_FACTOR_TEMPERATURE;
-    if ((result < -RE_6_TEMPERATURE_MAX) || (result > RE_6_TEMPERATURE_MAX))
+    if (result < -RE_6_TEMPERATURE_MAX)
     {
-        return NAN;
+        return -RE_6_TEMPERATURE_MAX;
+    }
+    if (result > RE_6_TEMPERATURE_MAX)
+    {
+        return RE_6_TEMPERATURE_MAX;
     }
     return result;
 }
@@ -441,9 +453,13 @@ sen66_wrap_conv_raw_to_float_voc_index(const int16_t raw_voc_index)
         return NAN;
     }
     const re_float result = (float)raw_voc_index / SEN66_SCALE_FACTOR_VOC_INDEX;
-    if ((result < RE_6_VOC_MIN) || (result > RE_6_VOC_MAX))
+    if (result < RE_6_VOC_MIN)
     {
-        return NAN;
+        return RE_6_VOC_MIN;
+    }
+    if (result > RE_6_VOC_MAX)
+    {
+        return RE_6_VOC_MAX;
     }
     return result;
 }
@@ -456,9 +472,13 @@ sen66_wrap_conv_raw_to_float_nox_index(const int16_t raw_nox_index)
         return NAN;
     }
     const re_float result = (float)raw_nox_index / SEN66_SCALE_FACTOR_NOX_INDEX;
-    if ((result < RE_6_NOX_MIN) || (result > RE_6_NOX_MAX))
+    if (result < RE_6_NOX_MIN)
     {
-        return NAN;
+        return RE_6_NOX_MIN;
+    }
+    if (result > RE_6_NOX_MAX)
+    {
+        return RE_6_NOX_MAX;
     }
     return result;
 }
@@ -471,9 +491,13 @@ sen66_wrap_conv_raw_to_float_co2(const uint16_t raw_co2)
         return NAN;
     }
     const re_float result = (float)raw_co2 / SEN66_SCALE_FACTOR_CO2;
-    if ((result < RE_6_CO2_MIN) || (result > RE_6_CO2_MAX))
+    if (result < RE_6_CO2_MIN)
     {
-        return NAN;
+        return RE_6_CO2_MIN;
+    }
+    if (result > RE_6_CO2_MAX)
+    {
+        return RE_6_CO2_MAX;
     }
     return result;
 }

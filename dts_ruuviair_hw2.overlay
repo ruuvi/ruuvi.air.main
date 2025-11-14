@@ -1,4 +1,8 @@
+/**
+ * @copyright Ruuvi Innovations Ltd, license BSD-3-Clause.
+ */
+
 &i2c0 {
-    status = "okay";
-    clock-frequency = <I2C_BITRATE_STANDARD>;
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
 };

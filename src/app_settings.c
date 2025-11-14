@@ -42,6 +42,8 @@ LOG_MODULE_REGISTER(app_settings, LOG_LEVEL_INF);
 #define APP_SETTINGS_KEY_LED_COLOR_TABLE_DAY        "led/color_table_day"
 #define APP_SETTINGS_KEY_LED_COLOR_TABLE_BRIGHT_DAY "led/color_table_bright_day"
 
+#define APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT (25 * 10)
+
 typedef struct device_id_str_t
 {
     char serial_number[8 * 3]; // "XX:XX:XX:XX:XX:XX:XX:XX"
@@ -385,6 +387,71 @@ app_settings_led_brightness_deci_percent_t
 app_settings_get_led_brightness_deci_percent(void)
 {
     return g_led_mode_manual_deci_percent;
+}
+
+rgb_led_brightness_t
+app_settings_conv_deci_percent_to_brightness(
+    const app_settings_led_brightness_deci_percent_t brightness_deci_percent,
+    uint8_t* const                                   p_dim_pwm)
+{
+    const uint8_t led_brightness_min   = APP_SETTINGS_LED_BRIGHTNESS_NIGHT_VALUE;
+    const uint8_t led_brightness_max   = 255U;
+    const uint8_t led_brightness_range = (uint8_t)(led_brightness_max - led_brightness_min);
+
+    rgb_led_brightness_t led_brightness = 0;
+    uint8_t              dim_pwm        = 0;
+
+    if (g_led_mode_manual_deci_percent < APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT)
+    {
+        led_brightness = led_brightness_min;
+        dim_pwm        = (uint8_t)((255 * brightness_deci_percent
+                             + (APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT / 2))
+                            / APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT);
+    }
+    else
+    {
+        const uint32_t brightness_min_deci_percent   = APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT;
+        const uint32_t brightness_max_deci_percent   = 100 * 10;
+        const uint32_t brightness_range_deci_percent = brightness_max_deci_percent - brightness_min_deci_percent;
+
+        led_brightness = (rgb_led_brightness_t)(((brightness_deci_percent - brightness_min_deci_percent)
+                                                     * led_brightness_range
+                                                 + (brightness_range_deci_percent / 2))
+                                                    / brightness_range_deci_percent
+                                                + led_brightness_min);
+        dim_pwm        = 255;
+    }
+    if (NULL != p_dim_pwm)
+    {
+        *p_dim_pwm = dim_pwm;
+    }
+    return led_brightness;
+}
+
+rgb_led_brightness_t
+app_settings_get_led_brightness(void)
+{
+    switch (g_led_mode)
+    {
+        case APP_SETTINGS_LED_MODE_DISABLED:
+            return 0;
+
+        case APP_SETTINGS_LED_MODE_MANUAL_BRIGHT_DAY:
+            return APP_SETTINGS_LED_BRIGHTNESS_BRIGHT_DAY_VALUE;
+        case APP_SETTINGS_LED_MODE_MANUAL_DAY:
+            return APP_SETTINGS_LED_BRIGHTNESS_DAY_VALUE;
+        case APP_SETTINGS_LED_MODE_MANUAL_NIGHT:
+            return APP_SETTINGS_LED_BRIGHTNESS_NIGHT_VALUE;
+        case APP_SETTINGS_LED_MODE_MANUAL_OFF:
+            return 0;
+
+        case APP_SETTINGS_LED_MODE_MANUAL_PERCENTAGE:
+            return app_settings_conv_deci_percent_to_brightness(g_led_mode_manual_deci_percent, NULL);
+
+        case APP_SETTINGS_LED_MODE_AUTO:
+            return 0;
+    }
+    return 0;
 }
 
 bool

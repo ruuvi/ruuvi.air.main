@@ -23,9 +23,6 @@ float
 opt_rgb_ctrl_get_luminosity(void);
 
 void
-opt_rgb_ctrl_turn_off_led_before_reboot(void);
-
-void
 opt_rgb_ctrl_stop_bootup_led_fading(void);
 
 void

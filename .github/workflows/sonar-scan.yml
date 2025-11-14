@@ -1,0 +1,324 @@
+name: SonarCloud Analysis
+
+on:
+  push:
+    branches: [ master ]
+    tags: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+    types: [ opened, synchronize, reopened ]
+
+env:
+  NCS_VERSION: v2.8.0
+  PROJECT_DIR: ruuvi.air
+
+jobs:
+  sonar-scan:
+    name: Build and analyze
+    environment: dev
+    runs-on: ubuntu-24.04
+
+    strategy:
+      matrix:
+        image_tag: [ latest ]   # or pin: v2.8.0
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Set image ref
+        id: img
+        run: |
+          echo "IMAGE_REF=ghcr.io/${{ github.repository_owner }}/ruuvi-air-ci:${{ matrix.image_tag }}" >> $GITHUB_OUTPUT
+
+      - name: Make image-ref hash
+        id: img_hash
+        run: |
+          echo "IMAGE_REF_HASH=$(echo -n '${{ steps.img.outputs.IMAGE_REF }}' | sha256sum | cut -c1-12)" >> $GITHUB_OUTPUT
+
+      # Log in to GHCR. This can be removed if the image is public.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load Docker image
+        run: |
+          set -xeuo pipefail
+          echo "Pulling image ${{ steps.img.outputs.IMAGE_REF }} ..."
+          docker pull "${{ steps.img.outputs.IMAGE_REF }}"
+
+      - name: Prepare cache directories
+        run: |
+          pwd
+          echo HOME: ~
+          echo HOME: $HOME
+          mkdir -p ~/.nrfutil
+          mkdir -p ~/bin
+          mkdir -p ~/ncs
+          mkdir -p ~/ncs/toolchains
+          mkdir -p ~/ncs/${NCS_VERSION}
+
+      - name: Restore cached 'nrfutil Toolchain Manager'
+        id: cache-nrfutil-tcm
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.nrfutil
+          key: nrfutil-tcm-${{ env.NCS_VERSION }}-v4
+
+      - name: Restore cached 'nRF Connect toolchains'
+        id: cache-ncs-toolchains
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ncs/toolchains
+          key: ncs-toolchains-${{ env.NCS_VERSION }}-v4
+
+      - name: Restore cached 'nRF Connect SDK ${{ env.NCS_VERSION }}'
+        id: cache-ncs-sdk
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ncs/${{ env.NCS_VERSION }}
+          key: ncs-sdk-${{ env.NCS_VERSION }}-v4
+
+      - name: Install nRF Connect SDK Toolchain and SDK
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
+        if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' || steps.cache-ncs-toolchains.outputs.cache-hit != 'true' || steps.cache-ncs-sdk.outputs.cache-hit != 'true' }}
+        run: |
+          set -xeuo pipefail
+          docker run --rm \
+            --user "$(id -u)":"$(id -g)" \
+            -e HOME=$HOME \
+            -e USER="$(id -un)" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(id -un)" \
+            -e HOST_GROUP="$(id -gn)" \
+            -v "$HOME:$HOME" \
+            -w $HOME \
+            -e NCS_VERSION="${NCS_VERSION}" \
+            "${IMAGE_REF}" \
+            bash -lc '
+              set -xeuo pipefail
+              export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
+              install_ncs_v2.8.0.sh
+              source /usr/local/bin/dev-env-v2.8.0.sh
+
+              which nrfutil
+              nrfutil --version || true
+              which west
+              west --version || true
+              which python3
+              python3 --version || true
+              which gcovr
+              gcovr --version || true
+              which yq
+              yq --version || true
+              which clang-format
+              clang-format --version || true
+
+              echo ">>> DONE"
+            '
+      - name: Save 'nrfutil Toolchain Manager'
+        if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.nrfutil
+          key: ${{ steps.cache-nrfutil-tcm.outputs.cache-primary-key }}
+
+      - name: Save 'nRF Connect toolchains' cache (only on miss)
+        if: ${{ steps.cache-ncs-toolchains.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ncs/toolchains
+          key: ${{ steps.cache-ncs-toolchains.outputs.cache-primary-key }}
+
+      - name: Save 'nRF Connect SDK' cache (only on miss)
+        if: ${{ steps.cache-ncs-sdk.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ncs/${{ env.NCS_VERSION }}
+          key: ${{ steps.cache-ncs-sdk.outputs.cache-primary-key }}
+
+      - name: Install SonarCube build-wrapper
+        run: |
+          set -xeuo pipefail
+          wget -P "/tmp" https://sonarcloud.io/static/cpp/build-wrapper-linux-x86.zip
+          mkdir -p $HOME/bin
+          unzip -o "/tmp/build-wrapper-linux-x86.zip" -d $HOME/bin
+          rm -f "/tmp/build-wrapper-linux-x86.zip"
+
+      - name: Install SonarCube Scanner
+        run: |
+          set -xeuo pipefail
+          # Get the link to the latest version from:
+          # https://docs.sonarsource.com/sonarqube-server/10.6/analyzing-source-code/scanners/sonarscanner
+          SONAR_SCANNER_VER="7.3.0.5189"
+          SONAR_SCANNER_ZIP="sonar-scanner-cli-$SONAR_SCANNER_VER-linux-x64.zip"
+          rm -f "$HOME/bin/$SONAR_SCANNER_ZIP"
+          wget -P "$HOME/bin" "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/$SONAR_SCANNER_ZIP"
+          unzip -q -o "$HOME/bin/$SONAR_SCANNER_ZIP" -d "$HOME/bin"
+          rm -f "$HOME/bin/$SONAR_SCANNER_ZIP"
+          mv "$HOME/bin/sonar-scanner-$SONAR_SCANNER_VER-linux-x64" "$HOME/bin/sonar-scanner"
+          ls -la $HOME/bin/sonar-scanner/bin
+
+      - name: Checkout the code
+        uses: actions/checkout@v4     # Checks-out repository under $GITHUB_WORKSPACE
+        with:
+          path: ${{ env.PROJECT_DIR }}
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          submodules: true
+
+      - name: Prepare signing keys (host side; will be mounted read-only)
+        env:
+          B0_SIGN_KEY_PRIVATE: ${{ secrets.B0_SIGN_KEY_PRIVATE }}
+          B0_PROD_SIGN_KEY_PUBLIC: ${{ secrets.B0_PROD_SIGN_KEY_PUBLIC }}
+          IMAGE_SIGN: ${{ secrets.IMAGE_SIGN }}
+        run: |
+          set +x # do not echo secrets
+          mkdir -p "$RUNNER_TEMP/signing_keys"
+          install -m 600 /dev/null "$RUNNER_TEMP/signing_keys/b0_sign_key_private-dev.pem"
+          install -m 600 /dev/null "$RUNNER_TEMP/signing_keys/b0_sign_key_public-prod.pem"
+          install -m 600 /dev/null "$RUNNER_TEMP/signing_keys/image_sign-dev.pem"
+          printf "%s" "$B0_SIGN_KEY_PRIVATE"     > "$RUNNER_TEMP/signing_keys/b0_sign_key_private-dev.pem"
+          printf "%s" "$B0_PROD_SIGN_KEY_PUBLIC" > "$RUNNER_TEMP/signing_keys/b0_sign_key_public-prod.pem"
+          printf "%s" "$IMAGE_SIGN"              > "$RUNNER_TEMP/signing_keys/image_sign-dev.pem"
+
+      - name: Prepare directories for SonarQube scanning
+        run: |
+          set -x
+          echo HOME: $HOME
+          echo GITHUB_WORKSPACE: $GITHUB_WORKSPACE
+          ls -la $HOME
+          sleep 1
+          ls -la $HOME/.nrfutil
+          sleep 1
+          ls -la $HOME/bin/build-wrapper-linux-x86
+          sleep 1
+          ls -la $HOME/bin/sonar-scanner
+          sleep 1
+          ls -la $HOME/bin/sonar-scanner/bin
+          sleep 1
+          ls -la $HOME/ncs
+          sleep 1
+          ls -la $GITHUB_WORKSPACE
+          sleep 1
+          ls -la $GITHUB_WORKSPACE/${PROJECT_DIR}
+          sleep 1
+
+      - name: Run SonarQube scanning inside Docker container
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          set -xeuo pipefail
+
+          mv "$GITHUB_WORKSPACE/${PROJECT_DIR}" "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}"
+
+          docker run --rm \
+            --user "$(id -u)":"$(id -g)" \
+            -e HOME=$HOME \
+            -e USER="$(id -un)" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(id -un)" \
+            -e HOST_GROUP="$(id -gn)" \
+            -e SONAR_TOKEN="${SONAR_TOKEN:-}" \
+            -v "$HOME:$HOME" \
+            -v "$RUNNER_TEMP/signing_keys:$HOME/.signing_keys:ro" \
+            -v "$HOME/bin/build-wrapper-linux-x86:$HOME/bin/build-wrapper-linux-x86" \
+            -v "$HOME/bin/sonar-scanner:$HOME/bin/sonar-scanner" \
+            -w $HOME \
+            -e NCS_VERSION="${NCS_VERSION}" \
+            -e PROJECT_DIR="${PROJECT_DIR}" \
+            "${IMAGE_REF}" \
+            bash -lc '
+              set -xeuo pipefail
+
+              export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
+              pwd
+              sleep 1
+              echo HOME: $HOME
+              sleep 1
+              ls -la $HOME
+              sleep 1
+              ls -la $HOME/bin/build-wrapper-linux-x86
+              sleep 1
+              ls -la $HOME/.nrfutil
+              sleep 1
+              ls -la $HOME/ncs
+              sleep 1
+              ls -la $HOME/ncs/v2.8.0
+              sleep 1
+              ls -la $HOME/ncs/v2.8.0/${PROJECT_DIR}
+              sleep 1
+
+              export PATH="$HOME/bin/build-wrapper-linux-x86:$HOME/bin/sonar-scanner/bin:$PATH"
+              which build-wrapper-linux-x86-64
+
+              source /usr/local/bin/dev-env-v2.8.0.sh
+
+              cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
+
+              pwd
+              sleep 1
+              ls -la .
+              sleep 1
+
+              mkdir -p build-sonar
+              cd build-sonar
+              build-wrapper-linux-x86-64 --out-dir ./bw-output bash ../build_ruuviair_a3_release-dev.sh --build_dir=$(realpath -m "./bw-output")
+              cd ..
+
+              twister -c -p native_sim -v -T . --coverage --coverage-tool gcovr
+              gcovr \
+                --object-directory twister-out \
+                --sonarqube \
+                --verbose \
+                --output coverage.xml \
+                --exclude 'tests/.*' \
+                --exclude 'components/.*'
+
+              ls -la coverage.xml
+              sleep 1
+
+              find . -type f -name "*.gcno" -exec rm -f {} \;
+              find . -type f -name '*.gcna' -exec rm -f {} \;
+              find . -type f -name "*.gcov" -exec rm -f {} \;
+              find . -type f -name 'gtestresults.xml' -exec rm -f {} \;
+              rm -rf twister-out
+
+              if [ ! -z "$SONAR_TOKEN" ]; then
+                sonar-scanner --debug \
+                  --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
+                  --define sonar.coverageReportPaths=coverage.xml
+              fi
+            '
+
+      # - name: SonarQube Scan
+      #   uses: SonarSource/sonarqube-scan-action@v6
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #   with:
+      #     projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
+      #     args: >
+      #       --debug
+      #       --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+      #       --define sonar.coverageReportPaths=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/coverage.xml
+
+      # - name: SonarQube Scan
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #   run: |
+      #     set -xeuo pipefail
+      #     cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
+      #     export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
+      #     which sonar-scanner
+      #     sonar-scanner --debug \
+      #       --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
+      #       --define sonar.coverageReportPaths=coverage.xml

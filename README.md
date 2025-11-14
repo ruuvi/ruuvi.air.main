@@ -474,3 +474,22 @@ ruuvi led_reset_color_table night
 ruuvi led_reset_color_table day
 ruuvi led_reset_color_table bright_day
 ```
+
+## Shell command **version_info**
+
+**version_info** allows to get firmware version info for App/FwLoader/MCUboo0/MCUboo1, hardware revision name and buid type (development or production).
+
+Format:
+```
+ruuvi version_info
+```
+
+Example of output:
+```
+Hardware revision: RuuviAir-A3
+Build type: development
+App version: 1.0.7+1
+FwLoader version: 1.0.2+21
+MCUBoot0 version: 1.0.0+28
+MCUBoot1 version: 1.0.0+28
+```

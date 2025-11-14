@@ -59,6 +59,9 @@ app_settings_get_led_mode(void);
 app_settings_led_brightness_deci_percent_t
 app_settings_get_led_brightness_deci_percent(void);
 
+rgb_led_brightness_t
+app_settings_get_led_brightness(void);
+
 bool
 app_settings_is_led_mode_auto(void);
 
@@ -87,6 +90,11 @@ app_settings_set_led_color_table(
 
 void
 app_settings_reset_led_color_table(manual_brightness_level_e brightness_level);
+
+rgb_led_brightness_t
+app_settings_conv_deci_percent_to_brightness(
+    const app_settings_led_brightness_deci_percent_t brightness_deci_percent,
+    uint8_t* const                                   p_dim_pwm);
 
 #ifdef __cplusplus
 }

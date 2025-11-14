@@ -56,6 +56,9 @@ rgb_led_write_raw_pwms(const rgb_led_pwms_t* const p_pwms);
 bool
 rgb_led_check_and_reinit_if_needed(void);
 
+bool
+rgb_led_turn_on_animation_blinking_white(void);
+
 #ifdef __cplusplus
 }
 #endif

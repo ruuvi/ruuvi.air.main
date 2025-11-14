@@ -43,8 +43,8 @@ struct lp5810_config {
 
 struct lp5810_data {
 	struct k_mutex mutex;
-	uint8_t write_chan_buf[LP5810_MAX_CHANNELS + 1]; /* +1 for the command byte */
-	uint8_t led_mask;                                /* Mask of enabled LEDs */
+	uint8_t write_chan_buf[0x1A + 1]; /* +1 for the command byte */
+	uint8_t led_mask;                 /* Mask of enabled LEDs */
 };
 
 static uint8_t lp5810_i2c_addr(const struct device *const p_dev, const uint16_t reg)
@@ -441,7 +441,7 @@ static bool lp5810_configure(const struct device *dev)
 		return false;
 	}
 
-	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_UPDATE, LP5810_REG_UPDATE_CMD)) {
+	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_CMD_UPDATE, LP5810_REG_CMD_UPDATE_VAL)) {
 		LOG_ERR("%s: Failed to write UPDATE", dev->name);
 		return false;
 	}
@@ -833,4 +833,64 @@ int lp5810_write_pwms(const struct device *dev, const uint8_t *const p_buf, cons
 	}
 	lp5810_unlock(dev);
 	return 0;
+}
+
+bool lp5810_auto_animation_enable(const struct device *dev, const uint8_t *const p_auto_dc_buf,
+				  const size_t buf_len)
+{
+	const struct lp5810_config *config = dev->config;
+
+	if (!lp5810_buf_write_with_retries(dev, LP5810_REG_AUTO_DC(0), p_auto_dc_buf, buf_len)) {
+		LOG_ERR("LP5810: Failed to set LP5810_REG_AUTO_DC");
+		return false;
+	}
+
+	uint8_t led_auto_en_mask = 0;
+	if ((buf_len >= 1) && (config->num_leds >= 1)) {
+		led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_0;
+	}
+	if ((buf_len >= 2) && (config->num_leds >= 2)) {
+		led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_1;
+	}
+	if ((buf_len >= 3) && (config->num_leds >= 3)) {
+		led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_2;
+	}
+	if ((buf_len >= 4) && (config->num_leds >= 4)) {
+		led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_3;
+	}
+	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_DEV_CONFIG_3, led_auto_en_mask)) {
+		LOG_ERR("%s: Failed to write LP5810_REG_DEV_CONFIG_3", dev->name);
+		return false;
+	}
+	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_CMD_UPDATE, LP5810_REG_CMD_UPDATE_VAL)) {
+		LOG_ERR("%s: Failed to write LP5810_REG_CMD_UPDATE", dev->name);
+		return false;
+	}
+	return true;
+}
+
+bool lp5810_auto_animation_configure(const struct device *dev, const int channel,
+				     const lp5810_auto_animation_cfg_t *const p_cfg)
+{
+	const struct lp5810_config *config = dev->config;
+
+	if ((channel < 0) || (channel >= config->num_leds)) {
+		LOG_ERR("LP5810: Invalid auto animation channel: %d", channel);
+		return false;
+	}
+	if (!lp5810_buf_write_with_retries(dev, LP5810_REG_AUTO_ANIMATION_BASE(channel),
+					   (const uint8_t *)p_cfg, sizeof(*p_cfg))) {
+		LOG_ERR("LP5810: Failed to set LP5810_REG_AUTO_ANIMATION");
+		return false;
+	}
+	return true;
+}
+
+bool lp5810_auto_animation_start(const struct device *dev)
+{
+	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_CMD_START, LP5810_REG_CMD_START_VAL)) {
+		LOG_ERR("%s: Failed to write START", dev->name);
+		return false;
+	}
+	return true;
 }

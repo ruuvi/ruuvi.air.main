@@ -31,4 +31,3 @@ extern "C" {
 #endif
 
 #endif // RUUVI_IMAGE_TLV_H
-

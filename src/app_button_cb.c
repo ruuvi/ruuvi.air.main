@@ -92,11 +92,7 @@ button_workq_cb_timeout(struct k_work* item)
 static void
 button_workq_cb_reboot(struct k_work* item)
 {
-#if CONFIG_DEBUG
     sys_reboot(SYS_REBOOT_COLD);
-#else
-    app_watchdog_force_trigger();
-#endif
 }
 
 static void

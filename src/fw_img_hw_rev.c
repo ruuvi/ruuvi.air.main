@@ -374,49 +374,108 @@ func_exit:
     return is_success;
 }
 
-void
-fw_img_print_image_info(const int fa_id, struct image_version* const p_fw_ver, fw_image_hw_rev_t* const p_hw_rev)
+static int
+fa_id_from_fw_img_id(const fw_img_id_e fw_img_id)
 {
-    uint32_t fa_addr = 0;
-    uint32_t fa_size = 0;
+    switch (fw_img_id)
+    {
+        case FW_IMG_ID_APP:
+            return PM_ID(mcuboot_primary);
+        case FW_IMG_ID_FWLOADER:
+            return PM_ID(mcuboot_secondary);
+        case FW_IMG_ID_MCUBOOT0:
+            return PM_ID(s0);
+        case FW_IMG_ID_MCUBOOT1:
+            return PM_ID(s1);
+        default:
+            LOG_ERR("Invalid fw_img_id %d", fw_img_id);
+            return -1;
+    }
+}
+
+bool
+fw_img_get_image_info(
+    const fw_img_id_e           fw_img_id,
+    struct image_version* const p_fw_ver,
+    const struct fw_info**      p_p_fw_info,
+    fw_image_hw_rev_t* const    p_hw_rev)
+{
+    uint32_t  fa_addr = 0;
+    uint32_t  fa_size = 0;
+    const int fa_id   = fa_id_from_fw_img_id(fw_img_id);
+    if (fa_id < 0)
+    {
+        return false;
+    }
     if (!get_flash_area_address_and_size(fa_id, &fa_addr, &fa_size))
     {
         LOG_ERR("Failed to get flash area address and size for %d", fa_id);
-        return;
+        return false;
     }
 
     const struct fw_info* const p_fw_info = fw_info_find(fa_addr);
     if (NULL == p_fw_info)
     {
         LOG_ERR("Failed to find fw_info for flash area %d", fa_id);
-        return;
+        return false;
     }
 
     struct image_header img_hdr = { 0 };
     if (!load_image_header(fa_id, &img_hdr))
     {
         LOG_ERR("Failed to load image header for flash area %d", fa_id);
-        return;
+        return false;
     }
     fw_image_hw_rev_t hw_rev = { 0 };
     fw_img_hw_rev_find_in_flash_area(fa_id, &hw_rev);
+    if (NULL != p_fw_ver)
+    {
+        *p_fw_ver = img_hdr.ih_ver;
+    }
+    if (NULL != p_p_fw_info)
+    {
+        *p_p_fw_info = p_fw_info;
+    }
+    if (NULL != p_hw_rev)
+    {
+        *p_hw_rev = hw_rev;
+    }
+    return true;
+}
+
+void
+fw_img_print_image_info(
+    const fw_img_id_e           fw_img_id,
+    struct image_version* const p_fw_ver,
+    fw_image_hw_rev_t* const    p_hw_rev)
+{
+    struct image_version  fw_ver    = { 0 };
+    const struct fw_info* p_fw_info = NULL;
+    fw_image_hw_rev_t     hw_rev    = { 0 };
+
+    if (!fw_img_get_image_info(fw_img_id, &fw_ver, &p_fw_info, &hw_rev))
+    {
+        return;
+    }
+
     LOG_INF(
         "### Flash area %d: Image version: v%u.%u.%u+%u, FwInfoVer: %u, HwRev: ID=%" PRIu32 ", name='%s' ###",
-        fa_id,
-        img_hdr.ih_ver.iv_major,
-        img_hdr.ih_ver.iv_minor,
-        img_hdr.ih_ver.iv_revision,
-        img_hdr.ih_ver.iv_build_num,
+        fa_id_from_fw_img_id(fw_img_id),
+        fw_ver.iv_major,
+        fw_ver.iv_minor,
+        fw_ver.iv_revision,
+        fw_ver.iv_build_num,
         p_fw_info->version,
         hw_rev.hw_rev_num,
         hw_rev.hw_rev_name);
     if (NULL != p_fw_ver)
     {
-        *p_fw_ver = img_hdr.ih_ver;
+        *p_fw_ver = fw_ver;
     }
     if (NULL != p_hw_rev)
     {
         *p_hw_rev = hw_rev;
     }
 }
+
 #endif // CONFIG_BOOTLOADER_MCUBOOT

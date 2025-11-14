@@ -1,4 +1,4 @@
-name: Build firmware (prod) for RuuviAir-A3
+name: Build firmware (dev) for RuuviAir-A3
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
 
 env:
   NCS_VERSION: v2.8.0
+  PROJECT_DIR: ruuvi.air
+  SCRIPT_NAME: build_ruuviair_a3_release-prod
 
 jobs:
   build:
@@ -14,167 +16,213 @@ jobs:
     environment: prod
     runs-on: ubuntu-24.04
 
+    strategy:
+      matrix:
+        image_tag: [ latest ]   # or pin: v2.8.0
+
+    defaults:
+      run:
+        shell: bash
+
     steps:
-      - name: Install dependencies
+      - name: Set image ref
+        id: img
         run: |
-          sudo apt-get update
-          echo which yq
-          which yq
-          sudo apt-get install -y srecord
-          YQ_VERSION=v4.46.1
-          sudo curl -L "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
-          sudo chmod +x /usr/local/bin/yq
-          echo which yq
-          which yq
+          echo "IMAGE_REF=ghcr.io/${{ github.repository_owner }}/ruuvi-air-ci:${{ matrix.image_tag }}" >> $GITHUB_OUTPUT
+
+      - name: Make image-ref hash
+        id: img_hash
+        run: |
+          echo "IMAGE_REF_HASH=$(echo -n '${{ steps.img.outputs.IMAGE_REF }}' | sha256sum | cut -c1-12)" >> $GITHUB_OUTPUT
+
+      # Log in to GHCR. This can be removed if the image is public.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load Docker image
+        run: |
+          set -xeuo pipefail
+          echo "Pulling image ${{ steps.img.outputs.IMAGE_REF }} ..."
+          docker pull "${{ steps.img.outputs.IMAGE_REF }}"
+
+      - name: Prepare cache directories
+        run: |
+          pwd
+          echo HOME: ~
+          echo HOME: $HOME
+          mkdir -p ~/.nrfutil
+          mkdir -p ~/bin
+          mkdir -p ~/ncs
+          mkdir -p ~/ncs/toolchains
+          mkdir -p ~/ncs/${NCS_VERSION}
+
+      - name: Restore cached 'nrfutil Toolchain Manager'
+        id: cache-nrfutil-tcm
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.nrfutil
+          key: nrfutil-tcm-${{ env.NCS_VERSION }}-v4
+
+      - name: Restore cached 'nRF Connect toolchains'
+        id: cache-ncs-toolchains
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ncs/toolchains
+          key: ncs-toolchains-${{ env.NCS_VERSION }}-v4
+
+      - name: Restore cached 'nRF Connect SDK ${{ env.NCS_VERSION }}'
+        id: cache-ncs-sdk
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ncs/${{ env.NCS_VERSION }}
+          key: ncs-sdk-${{ env.NCS_VERSION }}-v4
+
+      - name: Install nRF Connect SDK Toolchain and SDK
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
+        if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' || steps.cache-ncs-toolchains.outputs.cache-hit != 'true' || steps.cache-ncs-sdk.outputs.cache-hit != 'true' }}
+        run: |
+          set -xeuo pipefail
+          docker run --rm \
+            --user "$(id -u)":"$(id -g)" \
+            -e HOME=$HOME \
+            -e USER="$(id -un)" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(id -un)" \
+            -e HOST_GROUP="$(id -gn)" \
+            -v "$HOME:$HOME" \
+            -w $HOME \
+            -e NCS_VERSION="${NCS_VERSION}" \
+            "${IMAGE_REF}" \
+            bash -lc '
+              set -xeuo pipefail
+              export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
+              install_ncs_v2.8.0.sh
+              source /usr/local/bin/dev-env-v2.8.0.sh
+
+              which nrfutil
+              nrfutil --version || true
+              which west
+              west --version || true
+              which python3
+              python3 --version || true
+              which gcovr
+              gcovr --version || true
+              which yq
+              yq --version || true
+              which clang-format
+              clang-format --version || true
+
+              echo ">>> DONE"
+            '
+      - name: Save 'nrfutil Toolchain Manager'
+        if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.nrfutil
+          key: ${{ steps.cache-nrfutil-tcm.outputs.cache-primary-key }}
+
+      - name: Save 'nRF Connect toolchains' cache (only on miss)
+        if: ${{ steps.cache-ncs-toolchains.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ncs/toolchains
+          key: ${{ steps.cache-ncs-toolchains.outputs.cache-primary-key }}
+
+      - name: Save 'nRF Connect SDK' cache (only on miss)
+        if: ${{ steps.cache-ncs-sdk.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ncs/${{ env.NCS_VERSION }}
+          key: ${{ steps.cache-ncs-sdk.outputs.cache-primary-key }}
 
       - name: Checkout the code
-        uses: actions/checkout@v4     # Checks-out repository under $GITHUB_WORKSPACE
+        uses: actions/checkout@v4
         with:
-          path: ruuvi.air
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          path: ${{ env.PROJECT_DIR }}
+          fetch-depth: 0
           submodules: true
 
-      - name: Checkout submodules
-        run: cd ruuvi.air && git submodule update --init --recursive
-
-      - name: Retrieve the secrets and save them to files
+      - name: Prepare signing keys (host side; will be mounted read-only)
         env:
           B0_SIGN_KEY_PRIVATE: ${{ secrets.B0_SIGN_KEY_PRIVATE }}
           B0_PROD_SIGN_KEY_PUBLIC: ${{ secrets.B0_PROD_SIGN_KEY_PUBLIC }}
           IMAGE_SIGN: ${{ secrets.IMAGE_SIGN }}
         run: |
-          mkdir -p $HOME/.signing_keys
-          echo "$B0_SIGN_KEY_PRIVATE">$HOME/.signing_keys/b0_sign_key_private-prod.pem
-          echo "$B0_PROD_SIGN_KEY_PUBLIC">$HOME/.signing_keys/b0_sign_key_public-prod.pem
-          echo "$IMAGE_SIGN">$HOME/.signing_keys/image_sign-prod.pem
+          set +x # do not echo secrets
+          mkdir -p "$RUNNER_TEMP/signing_keys"
+          install -m 600 /dev/null "$RUNNER_TEMP/signing_keys/b0_sign_key_private-prod.pem"
+          install -m 600 /dev/null "$RUNNER_TEMP/signing_keys/b0_sign_key_public-prod.pem"
+          install -m 600 /dev/null "$RUNNER_TEMP/signing_keys/image_sign-prod.pem"
+          printf "%s" "$B0_SIGN_KEY_PRIVATE"     > "$RUNNER_TEMP/signing_keys/b0_sign_key_private-prod.pem"
+          printf "%s" "$B0_PROD_SIGN_KEY_PUBLIC" > "$RUNNER_TEMP/signing_keys/b0_sign_key_public-prod.pem"
+          printf "%s" "$IMAGE_SIGN"              > "$RUNNER_TEMP/signing_keys/image_sign-prod.pem"
 
-      # Step 1: Cache nrfutil
-      - name: Cache nrfutil
-        id: cache-nrfutil
-        uses: actions/cache@v4
-        with:
-          path: nrfutil-bin
-          key: nrfutil-${{ runner.os }}-v1
-
-      # Step 2: Install nrfutil if cache misses
-      - name: Install nrfutil
-        if: steps.cache-nrfutil.outputs.cache-hit != 'true'
+      - name: Prepare derived env
         run: |
-          mkdir -p nrfutil-bin
-          wget "https://files.nordicsemi.com/ui/api/v1/download?repoKey=swtools&path=external/nrfutil/executables/x86_64-unknown-linux-gnu/nrfutil&isNativeBrowsing=false" -O nrfutil-bin/nrfutil
-          chmod +x nrfutil-bin/nrfutil
+          echo "SCRIPT_PATH=./${SCRIPT_NAME}.sh" >> "$GITHUB_ENV"
+          echo "BUILD_DIR_NAME=${SCRIPT_NAME}" >> "$GITHUB_ENV"
 
-      # Step 3: Add nrfutil to PATH
-      - name: Add nrfutil to PATH
-        run: echo "${{ github.workspace }}/nrfutil-bin" >> $GITHUB_PATH
-
-      # Step 4: Verify nrfutil Installation
-      - name: Verify nrfutil Installation
-        run: nrfutil --version
-
-      # Step 5: Cache nrfutil Toolchain Manager
-      - name: Cache nrfutil Toolchain Manager
-        id: cache-nrfutil-tcm
-        uses: actions/cache@v4
-        with:
-          path: ~/.nrfutil
-          key: nrfutil-tcm-${{ runner.os }}-v1
-
-      # Step 6: Install the Toolchain Manager
-      - name: Install nRF Connect SDK Toolchain Manager
-        if: steps.cache-nrfutil-tcm.outputs.cache-hit != 'true'
-        run: nrfutil install toolchain-manager
-
-      # Step 7: Cache the nRF Connect SDK
-      - name: Cache nRF Connect SDK
-        id: cache-ncs
-        uses: actions/cache@v4
-        with:
-          path: ~/ncs
-          key: ncs-${{ runner.os }}-${{ env.NCS_VERSION }}-v1
-
-      # Step 8: Install the Toolchain and SDK if cache misses
-      - name: Install nRF Connect SDK Toolchain and SDK
-        if: steps.cache-ncs.outputs.cache-hit != 'true'
+      - name: Build inside Docker container (reusing cached .nrfutil and ncs)
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
         run: |
-          nrfutil toolchain-manager install --ncs-version $NCS_VERSION
-          # Workaround for "git-remote-https: error while loading shared libraries: libunistring.so.2: cannot open shared object file: No such file or directory"
-          # https://devzone.nordicsemi.com/f/nordic-q-a/106982/error-installing-nrf-connect-sdk-in-vscode-linux-libunistring-so-2-cannot-open-shared-object-file-no-such-file-or-directory
-          rm ~/ncs/toolchains/b81a7cd864/usr/lib/x86_64-linux-gnu/libpsl.so.5*
-          cd ~/ncs
-          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
-          west init -m https://github.com/nrfconnect/sdk-nrf --mr $NCS_VERSION $NCS_VERSION
-          cd ~/ncs/$NCS_VERSION
-          west update
+          set -xeuo pipefail
 
-      - name: zephyr-export
-        run: |
-          set -x
-          cd ~/ncs/$NCS_VERSION
-          nrfutil toolchain-manager launch west -- zephyr-export
+          mv "$GITHUB_WORKSPACE/${PROJECT_DIR}" "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}"
 
-      - name: Check directories
-        run: |
-          set -x
-          which yq
-          yq --version
-          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
-          which yq
-          yq --version
-          echo HOME: $HOME
-          echo PATH: $PATH
-          west --version
-          which clang-format
-          clang-format --version
-          which python
-          python --version
-          which python3
-          python3 --version
-          pwd
-          ls -la .
-          ls -la ./ruuvi.air
-          ls -la ~
-          ls -la ~/ncs
-          ls -la ~/ncs/$NCS_VERSION
-          cd ~/ncs/$NCS_VERSION/zephyr && git describe --tags
+          docker run --rm \
+            --network none \
+            --cap-drop NET_ADMIN \
+            --cap-drop NET_RAW \
+            --cap-drop NET_BIND_SERVICE \
+            --user "$(id -u)":"$(id -g)" \
+            -e HOME=$HOME \
+            -e USER="$(id -un)" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(id -un)" \
+            -e HOST_GROUP="$(id -gn)" \
+            -v "$HOME:$HOME" \
+            -v "$RUNNER_TEMP/signing_keys:$HOME/.signing_keys:ro" \
+            -w $HOME \
+            -e NCS_VERSION="${NCS_VERSION}" \
+            -e PROJECT_DIR="${PROJECT_DIR}" \
+            -e SCRIPT_PATH="${SCRIPT_PATH}" \
+            -e BUILD_DIR_NAME="${BUILD_DIR_NAME}" \
+            "${IMAGE_REF}" \
+            bash -lc '
+              set -xeuo pipefail
 
-      - name: Install Python dependencies
-        run: |
-          set -x
-          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
-          source ~/ncs/$NCS_VERSION/zephyr/zephyr-env.sh
-          python3 -m pip install --upgrade pip
-          pip3 install ecdsa
+              export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 
-      - name: Create symlink to code in ncs directory
-        run: |
-          set -x
-          ln -s $GITHUB_WORKSPACE/ruuvi.air ~/ncs/$NCS_VERSION/ruuvi.air
+              echo ">>> Init dev env"
+              source /usr/local/bin/dev-env-v2.8.0.sh
 
-      - name: Build
-        run: |
-          set -x
-          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
-          source ~/ncs/$NCS_VERSION/zephyr/zephyr-env.sh
-          cd ~/ncs/$NCS_VERSION/ruuvi.air
-          ./build_ruuviair_a3_release-prod.sh
+              cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
 
-      - name: Remove symlink to code in ncs directory
-        run: |
-          set -x
-          rm ~/ncs/$NCS_VERSION/ruuvi.air
+              echo ">>> Running build script: ${SCRIPT_PATH}"
+              "./${SCRIPT_PATH}" --build_dir="${BUILD_DIR_NAME}"
+            '
 
-      - name: Upload artifact ruuvi_air_fw_ruuviair_a3-prod
+          mv "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}" "$GITHUB_WORKSPACE/${PROJECT_DIR}"
+
+      - name: Upload artifact ${{ env.SCRIPT_NAME }}
         uses: actions/upload-artifact@v4
         with:
-          name: ruuvi_air_fw_ruuviair_a3-prod
+          name: ${{ env.SCRIPT_NAME }}
           path: |
-            ruuvi.air/build_ruuviair_a3_release-prod/merged.hex
-            ruuvi.air/build_ruuviair_a3_release-prod/merged.ext_flash.hex
-            ruuvi.air/build_ruuviair_a3_release-prod/b0_container.hex
-            ruuvi.air/build_ruuviair_a3_release-prod/signed_by_mcuboot_and_b0_mcuboot.bin
-            ruuvi.air/build_ruuviair_a3_release-prod/signed_by_mcuboot_and_b0_s1_image.bin
-            ruuvi.air/build_ruuviair_a3_release-prod/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin
-            ruuvi.air/build_ruuviair_a3_release-prod/ruuvi.air/zephyr/ruuvi_air_fw.signed.bin
-
-            ruuvi.air/nrfjprog_cfg_ruuviair.toml
+            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/merged.hex
+            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/merged.ext_flash.hex
+            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/b0_container.hex
+            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/signed_by_mcuboot_and_b0_mcuboot.bin
+            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/signed_by_mcuboot_and_b0_s1_image.bin
+            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin
+            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/${{ env.PROJECT_DIR }}/zephyr/ruuvi_air_fw.signed.bin
+            ${{ env.PROJECT_DIR }}/nrfjprog_cfg_ruuviair.toml

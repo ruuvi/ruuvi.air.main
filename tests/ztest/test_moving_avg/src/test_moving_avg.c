@@ -107,8 +107,13 @@ ZTEST_F(test_suite_moving_avg, test_1)
 
     const measurement_cnt_t measurement_cnt = 0x123456;
     const radio_mac_t       radio_mac       = 0x112233445566;
+    const sensors_flags_t   flags           = {
+                    .flag_calibration_in_progress = false,
+                    .flag_button_pressed          = false,
+                    .flag_rtc_running_on_boot     = true,
+    };
 
-    const hist_log_record_data_t record  = moving_avg_get_accum(measurement_cnt, radio_mac);
+    const hist_log_record_data_t record  = moving_avg_get_accum(measurement_cnt, radio_mac, flags);
     const re_e1_data_t           e1_data = convert_record_to_e1_data(&record, radio_mac);
 
     ZASSERT_EQ_FLOAT((float)measurement.sen66.ambient_temperature / 200, e1_data.temperature_c);
@@ -125,6 +130,9 @@ ZTEST_F(test_suite_moving_avg, test_1)
     ZASSERT_EQ_FLOAT(measurement.sound_inst_dba, e1_data.sound_inst_dba);
     ZASSERT_EQ_FLOAT(measurement.sound_avg_dba, e1_data.sound_avg_dba);
     ZASSERT_EQ_FLOAT(measurement.sound_peak_spl_db, e1_data.sound_peak_spl_db);
+    ZASSERT_EQ_INT(0, e1_data.flags.flag_calibration_in_progress);
+    ZASSERT_EQ_INT(0, e1_data.flags.flag_button_pressed);
+    ZASSERT_EQ_INT(1, e1_data.flags.flag_rtc_running_on_boot);
     ZASSERT_EQ_INT(measurement_cnt, e1_data.seq_cnt);
     zassert_equal(radio_mac, e1_data.address);
 }
@@ -208,8 +216,13 @@ ZTEST_F(test_suite_moving_avg, test_2)
 
     const measurement_cnt_t measurement_cnt = 0x123456;
     const radio_mac_t       radio_mac       = 0x112233445566;
+    const sensors_flags_t   flags           = {
+                    .flag_calibration_in_progress = false,
+                    .flag_button_pressed          = false,
+                    .flag_rtc_running_on_boot     = true,
+    };
 
-    const hist_log_record_data_t record  = moving_avg_get_accum(measurement_cnt, radio_mac);
+    const hist_log_record_data_t record  = moving_avg_get_accum(measurement_cnt, radio_mac, flags);
     const re_e1_data_t           e1_data = convert_record_to_e1_data(&record, radio_mac);
 
     const float avg_temp = (float)(mea1.sen66.ambient_temperature + mea2.sen66.ambient_temperature) / 2 / 200;
@@ -240,6 +253,9 @@ ZTEST_F(test_suite_moving_avg, test_2)
     const float avg_sound_avg_dba = (mea1.sound_avg_dba + mea2.sound_avg_dba) / 2;
     ZASSERT_EQ_FLOAT_WITHIN(avg_sound_avg_dba, e1_data.sound_avg_dba, 0.1f);
     ZASSERT_EQ_FLOAT(MAX(mea1.sound_peak_spl_db, mea2.sound_peak_spl_db), e1_data.sound_peak_spl_db);
+    ZASSERT_EQ_INT(0, e1_data.flags.flag_calibration_in_progress);
+    ZASSERT_EQ_INT(0, e1_data.flags.flag_button_pressed);
+    ZASSERT_EQ_INT(1, e1_data.flags.flag_rtc_running_on_boot);
     ZASSERT_EQ_INT(measurement_cnt, e1_data.seq_cnt);
     zassert_equal(radio_mac, e1_data.address);
 }

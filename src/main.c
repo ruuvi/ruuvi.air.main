@@ -37,14 +37,7 @@
 #include "app_watchdog.h"
 #include "app_button.h"
 #include "app_fw_ver.h"
-#include "app_version.h"
-#include "ncs_version.h"
-#include "version.h"
-// #if APP_VERSION_NUMBER != 0
-// #include "app_commit.h"
-// #endif
-#include "ncs_commit.h"
-#include "zephyr_commit.h"
+#include "ruuvi_fw_update.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -60,6 +53,7 @@ typedef enum app_event_type
     APP_EVENT_TYPE_POLL_SENSORS       = 1 << 0,
     APP_EVENT_TYPE_MEASURE_LUMINOSITY = 1 << 1,
     APP_EVENT_TYPE_REFRESH_LED        = 1 << 2,
+    APP_EVENT_TYPE_REBOOT             = 1 << 3,
 } app_event_type_e;
 
 static void
@@ -78,10 +72,13 @@ static struct fs_mount_t lfs_storage_mnt = {
     .type        = FS_LITTLEFS,
     .fs_data     = &storage,
     .storage_dev = (void*)FIXED_PARTITION_ID(littlefs_storage1),
-    .mnt_point   = "/lfs1",
+    .mnt_point   = RUUVI_FW_UPDATE_MOUNT_POINT,
 };
 
 struct fs_mount_t* g_mountpoint = &lfs_storage_mnt;
+
+static k_tid_t g_main_thread_id;
+static bool    g_flag_rtc_valid_on_boot;
 
 static bool
 mount_fs(void)
@@ -294,7 +291,12 @@ poll_sensors(void)
     const sensors_measurement_t measurement = sensors_get_measurement();
     if (moving_avg_append(&measurement))
     {
-        const hist_log_record_data_t record = moving_avg_get_accum(measurement_cnt, ble_adv_get_mac());
+        const sensors_flags_t flags = {
+            .flag_calibration_in_progress = measurement.flag_nox_calibration_in_progress,
+            .flag_button_pressed          = app_button_is_pressed(),
+            .flag_rtc_running_on_boot     = g_flag_rtc_valid_on_boot,
+        };
+        const hist_log_record_data_t record = moving_avg_get_accum(measurement_cnt, ble_adv_get_mac(), flags);
         if (!hist_log_append_record((uint32_t)time(NULL), &record, true))
         {
             LOG_ERR("hist_log_append_record failed");
@@ -323,7 +325,13 @@ poll_sensors(void)
         // Do nothing, LED is off
     }
 
-    ble_adv_restart(&measurement, measurement_cnt);
+    const sensors_flags_t flags = {
+        .flag_calibration_in_progress = measurement.flag_nox_calibration_in_progress,
+        .flag_button_pressed          = app_button_is_pressed(),
+        .flag_rtc_running_on_boot     = g_flag_rtc_valid_on_boot,
+    };
+
+    ble_adv_restart(&measurement, measurement_cnt, flags);
 
 #if 0
     LOG_INF("system_heap:");
@@ -418,6 +426,8 @@ log_clocks(void)
 int
 main(void)
 {
+    g_main_thread_id = k_current_get();
+
     app_fw_ver_init();
     log_reset_cause();
     log_clocks();
@@ -432,20 +442,20 @@ main(void)
 
     app_segger_rtt_check_data_location_and_size();
 
-    rgb_led_init((rgb_led_brightness_t)CONFIG_RUUVI_AIR_LED_BRIGHTNESS);
-    aqi_init();
-    opt_rgb_ctrl_init(aqi_get_led_currents_alpha());
-
-    const bool is_rtc_valid = check_rtc_clock();
-
     if (!app_settings_init())
     {
         LOG_ERR("app_settings_init failed");
     }
 
+    rgb_led_init((rgb_led_brightness_t)CONFIG_RUUVI_AIR_LED_BRIGHTNESS);
+    aqi_init();
+    opt_rgb_ctrl_init(aqi_get_led_currents_alpha());
+
+    g_flag_rtc_valid_on_boot = check_rtc_clock();
+
     (void)mount_fs();
 
-    if (!hist_log_init(is_rtc_valid))
+    if (!hist_log_init(g_flag_rtc_valid_on_boot))
     {
         LOG_ERR("hist_log_init failed");
     }
@@ -489,7 +499,8 @@ main(void)
     {
         const uint32_t events = k_event_wait(
             &main_event,
-            APP_EVENT_TYPE_POLL_SENSORS | APP_EVENT_TYPE_MEASURE_LUMINOSITY | APP_EVENT_TYPE_REFRESH_LED,
+            APP_EVENT_TYPE_POLL_SENSORS | APP_EVENT_TYPE_MEASURE_LUMINOSITY | APP_EVENT_TYPE_REFRESH_LED
+                | APP_EVENT_TYPE_REBOOT,
             false,
             K_FOREVER);
         k_event_clear(&main_event, events);
@@ -509,7 +520,33 @@ main(void)
         {
             aqi_refresh_led();
         }
+        if (0 != (events & APP_EVENT_TYPE_REBOOT))
+        {
+            LOG_WRN("Reboot event received");
+            sys_reboot(SYS_REBOOT_COLD);
+        }
     }
+}
+
+static bool
+app_fs_is_file_exist(const char* const p_abs_path)
+{
+    bool                    res = true;
+    static struct fs_dirent g_fs_dir_entry;
+    const int               rc = fs_stat(p_abs_path, &g_fs_dir_entry);
+    if (-ENOENT == rc)
+    {
+        res = false;
+    }
+    else if (0 != rc)
+    {
+        res = false;
+    }
+    else if (FS_DIR_ENTRY_FILE != g_fs_dir_entry.type)
+    {
+        res = false;
+    }
+    return res;
 }
 
 /**
@@ -524,15 +561,57 @@ __real_sys_reboot(int type);
 void
 __wrap_sys_reboot(int type) // NOSONAR
 {
-    TLOG_WRN("Turning off LED before reboot");
-    opt_rgb_ctrl_turn_off_led_before_reboot();
-    TLOG_WRN("Rebooting...");
-    k_msleep(25); // Give some time to print log message
+    if (k_current_get() == g_main_thread_id)
+    {
+        TLOG_WRN("Reboot requested from main thread");
+        TLOG_WRN("Turning off LED before reboot");
+        if (rgb_led_is_lp5810_ready())
+        {
+            opt_rgb_ctrl_enable_led(false);
+            rgb_led_set_color_black();
+        }
+        bool flag_updates_available = false;
+        if (app_fs_is_file_exist(RUUVI_FW_UPDATE_MOUNT_POINT "/" RUUVI_FW_MCUBOOT0_FILE_NAME))
+        {
+            flag_updates_available = true;
+        }
+        if (app_fs_is_file_exist(RUUVI_FW_UPDATE_MOUNT_POINT "/" RUUVI_FW_MCUBOOT1_FILE_NAME))
+        {
+            flag_updates_available = true;
+        }
+        if (app_fs_is_file_exist(RUUVI_FW_UPDATE_MOUNT_POINT "/" RUUVI_FW_LOADER_FILE_NAME))
+        {
+            flag_updates_available = true;
+        }
+        if (app_fs_is_file_exist(RUUVI_FW_UPDATE_MOUNT_POINT "/" RUUVI_FW_APP_FILE_NAME))
+        {
+            flag_updates_available = true;
+        }
+        if (flag_updates_available)
+        {
+            TLOG_WRN("There are pending firmware updates, indicating this with RGB LED");
+            if (rgb_led_is_lp5810_ready())
+            {
+                rgb_led_turn_on_animation_blinking_white();
+            }
+        }
+        TLOG_WRN("Rebooting...");
+        k_msleep(25); // Give some time to print log message
 
-    /* Call the former implementation to actually restart the board */
-#if CONFIG_DEBUG
-    __real_sys_reboot(type);
+#if CONFIG_DEBUG || !IS_ENABLED(CONFIG_WATCHDOG)
+        /* Call the former implementation to actually restart the board */
+        __real_sys_reboot(type);
 #else
-    app_watchdog_force_trigger();
+        app_watchdog_force_trigger();
 #endif
+    }
+    else
+    {
+        TLOG_WRN("Reboot requested from thread id %p", (void*)k_current_get());
+        k_event_post(&main_event, APP_EVENT_TYPE_REBOOT);
+        while (1)
+        {
+            k_msleep(1000);
+        }
+    }
 }

@@ -22,7 +22,7 @@ bool
 moving_avg_append(const sensors_measurement_t* const p_measurement);
 
 hist_log_record_data_t
-moving_avg_get_accum(const measurement_cnt_t measurement_cnt, const radio_mac_t radio_mac);
+moving_avg_get_accum(const measurement_cnt_t measurement_cnt, const radio_mac_t radio_mac, const sensors_flags_t flags);
 
 #ifdef __cplusplus
 }

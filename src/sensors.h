@@ -32,7 +32,15 @@ typedef struct sensors_measurement_t
     float                    sound_avg_dba;
     float                    sound_peak_spl_db;
     float                    air_quality_index;
+    bool                     flag_nox_calibration_in_progress;
 } sensors_measurement_t;
+
+typedef struct sensors_flags_t
+{
+    bool flag_calibration_in_progress : 1; //!< Flag: Calibration in progress
+    bool flag_button_pressed : 1;          //!< Flag: Button pressed
+    bool flag_rtc_running_on_boot : 1;     //!< Flag: RTC was running on boot
+} sensors_flags_t;
 
 bool
 sensors_init(void);

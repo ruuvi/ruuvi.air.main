@@ -17,7 +17,8 @@ re_e1_data_t
 data_fmt_e1_init(
     const sensors_measurement_t* const p_measurement,
     const re_e1_seq_cnt_t              seq_cnt,
-    const re_e1_mac_addr_t             radio_mac);
+    const re_e1_mac_addr_t             radio_mac,
+    const re_e1_flags_t                flags);
 
 #ifdef __cplusplus
 }

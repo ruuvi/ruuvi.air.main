@@ -18,8 +18,16 @@
 #define LP5810_LSD_THRESHOLD_055_VOUT (0x02)
 #define LP5810_LSD_THRESHOLD_065_VOUT (0x03)
 
-#define LP5810_REG_UPDATE     (0x10)
-#define LP5810_REG_UPDATE_CMD (0x55)
+#define LP5810_REG_CMD_UPDATE       (0x10)
+#define LP5810_REG_CMD_UPDATE_VAL   (0x55)
+#define LP5810_REG_CMD_START        (0x11)
+#define LP5810_REG_CMD_START_VAL    (0xFF)
+#define LP5810_REG_CMD_STOP         (0x12)
+#define LP5810_REG_CMD_STOP_VAL     (0xAA)
+#define LP5810_REG_CMD_PAUSE        (0x13)
+#define LP5810_REG_CMD_PAUSE_VAL    (0x33)
+#define LP5810_REG_CMD_CONTINUE     (0x13)
+#define LP5810_REG_CMD_CONTINUE_VAL (0xCC)
 
 #define LP5810_REG_RESET     (0x23)
 #define LP5810_REG_RESET_CMD (0x66)
@@ -33,6 +41,12 @@
 #define LP5810_REG_DEV_CONFIG_0                      (0x01)
 #define LP5810_REG_DEV_CONFIG_0_VAL_MAX_CURRENT_25MA (0x00)
 #define LP5810_REG_DEV_CONFIG_0_VAL_MAX_CURRENT_51MA (0x01)
+
+#define LP5810_REG_DEV_CONFIG_3               (0x04)
+#define LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_0 (0x01)
+#define LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_1 (0x02)
+#define LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_2 (0x04)
+#define LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_3 (0x08)
 
 #define LP5810_REG_DEV_CONFIG_5                  (0x05)
 #define LP5810_REG_DEV_CONFIG_5_VAL_EXP_EN_LED_0 (0x01)
@@ -62,6 +76,9 @@
 
 #define LP5810_REG_MANUAL_DC(channel)  (0x30 + (channel))
 #define LP5810_REG_MANUAL_PWM(channel) (0x40 + (channel))
+
+#define LP5810_REG_AUTO_DC(channel)             (0x50 + (channel))
+#define LP5810_REG_AUTO_ANIMATION_BASE(channel) (0x80 + ((channel) * 0x1A))
 
 #define LP5810_REG_TSD_CONFIG_STATUS            (0x300)
 #define LP5810_REG_TSD_CONFIG_STATUS_MASK       (0x03)

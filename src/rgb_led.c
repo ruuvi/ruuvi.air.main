@@ -7,6 +7,7 @@
 #include <zephyr/drivers/led.h>
 #include <lp5810_api.h>
 #include "led_calibration.h"
+#include "app_settings.h"
 #include "tlog.h"
 
 LOG_MODULE_REGISTER(rgb_led, LOG_LEVEL_INF);
@@ -255,7 +256,7 @@ rgb_led_read_raw_pwms(rgb_led_pwms_t* const p_pwms)
     const int res = lp5810_read_pwms(dev_lp5810, buf, sizeof(buf));
     if (0 != res)
     {
-        LOG_ERR("LP5810: led_read_channels failed, res=%d", res);
+        LOG_ERR("LP5810: lp5810_read_pwms failed, res=%d", res);
         return false;
     }
 #endif
@@ -272,16 +273,16 @@ rgb_led_write_raw_pwms(const rgb_led_pwms_t* const p_pwms)
     {
         return false;
     }
+#if DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
     uint8_t buf[3] = {
         p_pwms->pwm_red,
         p_pwms->pwm_green,
         p_pwms->pwm_blue,
     };
-#if DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
     const int res = lp5810_write_pwms(dev_lp5810, buf, sizeof(buf));
     if (0 != res)
     {
-        LOG_ERR("LP5810: led_write_channels failed, res=%d", res);
+        LOG_ERR("LP5810: lp5810_write_pwms failed, res=%d", res);
         return false;
     }
 #endif
@@ -301,4 +302,66 @@ rgb_led_check_and_reinit_if_needed(void)
 #else
     return true;
 #endif // DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
+}
+
+bool
+rgb_led_turn_on_animation_blinking_white(void)
+{
+#if DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
+    rgb_led_brightness_t brightness = app_settings_get_led_brightness();
+    if (0 == brightness)
+    {
+        brightness = APP_SETTINGS_LED_BRIGHTNESS_DAY_VALUE;
+    }
+
+    const rgb_led_color_with_brightness_t color_white = {
+        .rgb = {
+            .red = 255,
+            .green = 255,
+            .blue = 255,
+        },
+        .brightness = brightness,
+    };
+    rgb_led_currents_t currents = { 0 };
+    rgb_led_pwms_t     pwms     = { 0 };
+    rgb_led_conv_rgb_with_brightness_to_currents_and_pwms(&color_white, &currents, &pwms);
+
+    const uint8_t buf[3] = { currents.current_red, currents.current_green, currents.current_blue };
+    if (!lp5810_auto_animation_enable(dev_lp5810, &buf[0], sizeof(buf)))
+    {
+        LOG_ERR("LP5810: Failed to set AUTO DC");
+        return false;
+    }
+
+    const lp5810_auto_animation_cfg_t anim_cfg = {
+        .auto_pause    = 0,
+        .auto_playback = 0x0F,
+        .AEU1_PWM      = { 0, 255, 0, 0, 0 },
+        .AEU1_T12      = 0x44,
+        .AEU1_T34      = 0x00,
+        .AEU1_playback = 0x03,
+        .AEU2_PWM      = { 0, 0, 0, 0, 0 },
+        .AEU2_T12      = 0,
+        .AEU2_T34      = 0,
+        .AEU2_playback = 0,
+        .AEU3_PWM      = { 0, 0, 0, 0, 0 },
+        .AEU3_T12      = 0,
+        .AEU3_T34      = 0,
+        .AEU3_playback = 0,
+    };
+    for (int i = 0; i < 3; i++)
+    {
+        if (!lp5810_auto_animation_configure(dev_lp5810, i, &anim_cfg))
+        {
+            LOG_ERR("LP5810: Failed to configure AUTO ANIMATION");
+            return false;
+        }
+    }
+    if (!lp5810_auto_animation_start(dev_lp5810))
+    {
+        LOG_ERR("LP5810: Failed to start AUTO ANIMATION");
+        return false;
+    }
+#endif // DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
+    return true;
 }

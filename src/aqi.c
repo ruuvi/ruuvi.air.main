@@ -22,8 +22,6 @@ LOG_MODULE_REGISTER(AQI, LOG_LEVEL_INF);
 
 #define AQI_EMA_ALPHA (0.1f) /* 1.0f - expf(-1.0f / 10) ≈ 0.1 */
 
-#define AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT (25 * 10)
-
 #define AQI_LED_EXP_CURRENTS_DURATION_MS (1000)
 
 static float g_aqi_luminosity_ema = 200.0f;
@@ -276,32 +274,10 @@ aqi_update_led_manual_percentage(
 {
     const rgb_led_color_t* const p_led_color = &g_aqi_auto_led_colors_table[aqi_idx];
 
-    const uint8_t led_brightness_min   = APP_SETTINGS_LED_BRIGHTNESS_NIGHT_VALUE;
-    const uint8_t led_brightness_max   = 255U;
-    const uint8_t led_brightness_range = (uint8_t)(led_brightness_max - led_brightness_min);
-
-    rgb_led_brightness_t led_brightness = 0;
     uint8_t              dim_pwm        = 0;
-
-    if (brightness_deci_percent < AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT)
-    {
-        led_brightness = led_brightness_min;
-        dim_pwm = (uint8_t)((255 * brightness_deci_percent + (AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT / 2))
-                            / AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT);
-    }
-    else
-    {
-        const uint32_t brightness_min_deci_percent   = AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT;
-        const uint32_t brightness_max_deci_percent   = 100 * 10;
-        const uint32_t brightness_range_deci_percent = brightness_max_deci_percent - brightness_min_deci_percent;
-
-        led_brightness = (rgb_led_brightness_t)(((brightness_deci_percent - brightness_min_deci_percent)
-                                                     * led_brightness_range
-                                                 + (brightness_range_deci_percent / 2))
-                                                    / brightness_range_deci_percent
-                                                + led_brightness_min);
-        dim_pwm        = 255;
-    }
+    rgb_led_brightness_t led_brightness = app_settings_conv_deci_percent_to_brightness(
+        brightness_deci_percent,
+        &dim_pwm);
 
     const rgb_led_color_t led_color = {
         .red   = (uint8_t)(((uint32_t)p_led_color->red * dim_pwm) / 255U),

@@ -9,13 +9,16 @@
 
 LOG_MODULE_REGISTER(wdog, LOG_LEVEL_INF);
 
+#if IS_ENABLED(CONFIG_WATCHDOG) && DT_NODE_EXISTS(DT_ALIAS(watchdog0)) && DT_NODE_HAS_STATUS(DT_ALIAS(watchdog0), okay)
 static const struct device* g_wdt_dev = DEVICE_DT_GET(DT_ALIAS(watchdog0));
 static int                  g_wdt_channel;
+#endif
 
 bool
 app_watchdog_start(void)
 {
-#if !CONFIG_DEBUG
+#if !CONFIG_DEBUG && IS_ENABLED(CONFIG_WATCHDOG)
+#if DT_NODE_EXISTS(DT_ALIAS(watchdog0)) && DT_NODE_HAS_STATUS(DT_ALIAS(watchdog0), okay)
     if (!device_is_ready(g_wdt_dev))
     {
         TLOG_ERR("watchdog device not ready");
@@ -25,7 +28,7 @@ app_watchdog_start(void)
     struct wdt_timeout_cfg cfg = {
 		.window = {
 			.min = 0,
-			.max = CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT,
+			.max = CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT + 500,
 		},
 		.callback = NULL,
 		.flags = WDT_FLAG_RESET_SOC,
@@ -46,14 +49,16 @@ app_watchdog_start(void)
     }
 
     TLOG_INF("WDT started: %d ms timeout", CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT);
-#endif // !CONFIG_DEBUG
+#endif
+#endif // !CONFIG_DEBUG && IS_ENABLED(CONFIG_WATCHDOG)
     return true;
 }
 
 void
 app_watchdog_feed(void)
 {
-#if !CONFIG_DEBUG
+#if !CONFIG_DEBUG && IS_ENABLED(CONFIG_WATCHDOG)
+#if DT_NODE_EXISTS(DT_ALIAS(watchdog0)) && DT_NODE_HAS_STATUS(DT_ALIAS(watchdog0), okay)
     int err = wdt_feed(g_wdt_dev, g_wdt_channel);
     if (err)
     {
@@ -63,10 +68,11 @@ app_watchdog_feed(void)
     {
         TLOG_DBG("wdt fed");
     }
-#endif // !CONFIG_DEBUG
+#endif
+#endif // !CONFIG_DEBUG && IS_ENABLED(CONFIG_WATCHDOG)
 }
 
-#if !CONFIG_DEBUG
+#if !CONFIG_DEBUG && IS_ENABLED(CONFIG_WATCHDOG)
 __NO_RETURN void
 app_watchdog_force_trigger(void)
 {
@@ -80,4 +86,4 @@ app_watchdog_force_trigger(void)
         __NOP();
     }
 }
-#endif // !CONFIG_DEBUG
+#endif // !CONFIG_DEBUG && IS_ENABLED(CONFIG_WATCHDOG)

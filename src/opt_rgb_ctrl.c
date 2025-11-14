@@ -24,7 +24,7 @@ LOG_MODULE_REGISTER(opt_rgb_ctrl, LOG_LEVEL_INF);
 
 #define OPT_RGB_CTRL_LP5810_CHECK_PERIOD_MS (500)
 
-#define OPT_RGB_CTRL_LED_BOOTUP_DIMMING_BRIGHTNESS (75)
+#define OPT_RGB_CTRL_LED_BOOTUP_DIMMING_BRIGHTNESS (100)
 #define OPT_RGB_CTRL_LED_BOOTUP_DIMMING_BLUE_MIN   (10)
 #define OPT_RGB_CTRL_LED_BOOTUP_DIMMING_BLUE_MAX   (255)
 
@@ -78,12 +78,11 @@ typedef struct opt_rgb_ctrl_led_state_t
 
 typedef enum opt_rgb_ctrl_event_type
 {
-    OPT_RGB_CTRL_EVENT_TYPE_NONE                       = 0,
-    OPT_RGB_CTRL_EVENT_TYPE_LED_CTRL_CYCLE             = 1 << 1,
-    OPT_RGB_CTRL_EVENT_TYPE_MEASURE_LUMINOSITY         = 1 << 2,
-    OPT_RGB_CTRL_EVENT_TYPE_LP5810_CHECK               = 1 << 3,
-    OPT_RGB_CTRL_EVENT_TYPE_TURN_OFF_LED_BEFORE_REBOOT = 1 << 4,
-    OPT_RGB_CTRL_EVENT_TYPE_STOP_BOOTUP_LED_FADING     = 1 << 5,
+    OPT_RGB_CTRL_EVENT_TYPE_NONE                   = 0,
+    OPT_RGB_CTRL_EVENT_TYPE_LED_CTRL_CYCLE         = 1 << 1,
+    OPT_RGB_CTRL_EVENT_TYPE_MEASURE_LUMINOSITY     = 1 << 2,
+    OPT_RGB_CTRL_EVENT_TYPE_LP5810_CHECK           = 1 << 3,
+    OPT_RGB_CTRL_EVENT_TYPE_STOP_BOOTUP_LED_FADING = 1 << 4,
 } opt_rgb_ctrl_event_type;
 
 #define OPT_RGB_CTRL_DIMMING_RULE_MAX_NUM_STAGES    (4U)
@@ -175,8 +174,8 @@ static float    g_opt4060_luminosity_in_manual_mode;
 static float    g_opt4060_luminosity[LUMINOSITY_ARRAY_SIZE];
 static float    g_opt4060_luminosity_tmp[LUMINOSITY_ARRAY_SIZE];
 static int      g_opt4060_luminosity_idx;
-static bool     g_led_turned_off           = false;
-static bool     g_opt_rgb_ctrl_led_enabled = true;
+static bool     g_led_turned_off               = false;
+static int32_t  g_opt_rgb_ctrl_led_disable_cnt = 0;
 
 static int64_t g_dbg_time_green_channel_measured;
 static int64_t g_dbg_cur_timestamp;
@@ -199,18 +198,47 @@ opt_rgb_ctrl_is_opt4060_ready(void)
 void
 opt_rgb_ctrl_enable_led(const bool enable)
 {
-    g_opt_rgb_ctrl_led_enabled = enable;
+    rgb_led_lock();
+    if (enable)
+    {
+        if (g_opt_rgb_ctrl_led_disable_cnt > 0)
+        {
+            g_opt_rgb_ctrl_led_disable_cnt--;
+        }
+    }
+    else
+    {
+        g_opt_rgb_ctrl_led_disable_cnt++;
+    }
+    rgb_led_unlock();
+}
+
+static bool
+opt_rgb_ctrl_is_led_enabled(void)
+{
+    rgb_led_lock();
+    const bool flag_led_enabled = (0 == g_opt_rgb_ctrl_led_disable_cnt) ? true : false;
+    rgb_led_unlock();
+    return flag_led_enabled;
 }
 
 static void
 on_timer_led_ctrl_cycle(struct k_timer* timer_id)
 {
+    if (!rgb_led_is_lp5810_ready())
+    {
+        return;
+    }
     k_event_post(&opt_rgb_ctrl_event, OPT_RGB_CTRL_EVENT_TYPE_LED_CTRL_CYCLE);
 }
 
 static void
 on_timer_lp5810_check(struct k_timer* timer_id)
 {
+    if (!rgb_led_is_lp5810_ready())
+    {
+        return;
+    }
     k_event_post(&opt_rgb_ctrl_event, OPT_RGB_CTRL_EVENT_TYPE_LP5810_CHECK);
 }
 
@@ -844,9 +872,11 @@ handle_rgb_ctrl(void)
             currents_and_pwms.led_pwms.pwm_green,
             currents_and_pwms.led_pwms.pwm_blue);
 
-        if (g_opt_rgb_ctrl_led_enabled)
+        if (opt_rgb_ctrl_is_led_enabled())
         {
+            rgb_led_lock();
             rgb_led_set_raw_currents_and_pwms(&currents_and_pwms.led_currents, &currents_and_pwms.led_pwms);
+            rgb_led_unlock();
         }
     }
     else
@@ -881,9 +911,11 @@ handle_rgb_ctrl(void)
             p_end->brightness);
         TLOG_DBG("Set Color: <%d, %d, %d>, Brightness: %d", color.red, color.green, color.blue, brightness);
 
-        if (g_opt_rgb_ctrl_led_enabled)
+        if (opt_rgb_ctrl_is_led_enabled())
         {
+            rgb_led_lock();
             rgb_led_set_brightness_and_color(brightness, &color);
+            rgb_led_unlock();
         }
     }
 
@@ -959,8 +991,7 @@ opt_rgb_ctrl_thread(void* p1, void* p2, void* p3)
         const uint32_t events = k_event_wait(
             &opt_rgb_ctrl_event,
             OPT_RGB_CTRL_EVENT_TYPE_LED_CTRL_CYCLE | OPT_RGB_CTRL_EVENT_TYPE_MEASURE_LUMINOSITY
-                | OPT_RGB_CTRL_EVENT_TYPE_LP5810_CHECK | OPT_RGB_CTRL_EVENT_TYPE_TURN_OFF_LED_BEFORE_REBOOT
-                | OPT_RGB_CTRL_EVENT_TYPE_STOP_BOOTUP_LED_FADING,
+                | OPT_RGB_CTRL_EVENT_TYPE_LP5810_CHECK | OPT_RGB_CTRL_EVENT_TYPE_STOP_BOOTUP_LED_FADING,
             false,
             K_FOREVER);
         k_event_clear(&opt_rgb_ctrl_event, events);
@@ -989,13 +1020,6 @@ opt_rgb_ctrl_thread(void* p1, void* p2, void* p3)
         {
             rgb_led_check_and_reinit_if_needed();
         }
-        if (0 != (events & OPT_RGB_CTRL_EVENT_TYPE_TURN_OFF_LED_BEFORE_REBOOT))
-        {
-            TLOG_WRN("Turning off LED before reboot");
-            rgb_led_deinit();
-            g_led_turned_off = true;
-            k_sem_give(&opt_rgb_ctrl_sem_led_turned_off);
-        }
         if (0 != (events & OPT_RGB_CTRL_EVENT_TYPE_STOP_BOOTUP_LED_FADING))
         {
             TLOG_INF("Stopping bootup LED fading");
@@ -1018,6 +1042,28 @@ K_THREAD_DEFINE(
 void
 opt_rgb_ctrl_init(const rgb_led_exp_current_coefs_t* const p_led_currents_alpha)
 {
+    const enum app_settings_led_mode led_mode = app_settings_get_led_mode();
+    if (APP_SETTINGS_LED_MODE_MANUAL_BRIGHT_DAY != led_mode)
+    {
+        const rgb_led_brightness_t brightness = app_settings_get_led_brightness();
+        uint8_t                    dim_pwm    = 255U;
+        if (APP_SETTINGS_LED_MODE_MANUAL_PERCENTAGE == led_mode)
+        {
+            const app_settings_led_brightness_deci_percent_t deci_percent
+                = app_settings_get_led_brightness_deci_percent();
+            app_settings_conv_deci_percent_to_brightness(deci_percent, &dim_pwm);
+        }
+        for (int i = 0; i < OPT_RGB_CTRL_DIMMING_RULE_BOOTUP_NUM_STAGES; ++i)
+        {
+            rgb_led_color_with_brightness_t* const p_color = &g_opt_rgb_ctrl_dimming_rule.stages[i]
+                                                                  .coord.color_with_brightness;
+            p_color->brightness = brightness;
+            p_color->rgb.red    = (uint8_t)((uint16_t)p_color->rgb.red * dim_pwm / 255U);
+            p_color->rgb.green  = (uint8_t)((uint16_t)p_color->rgb.green * dim_pwm / 255U);
+            p_color->rgb.blue   = (uint8_t)((uint16_t)p_color->rgb.blue * dim_pwm / 255U);
+        }
+    }
+
     g_p_led_currents_alpha = p_led_currents_alpha;
     k_sem_give(&opt_rgb_ctrl_sem_thread_start);
     k_sem_take(&opt_rgb_ctrl_sem_thread_started, K_FOREVER);
@@ -1028,14 +1074,6 @@ opt_rgb_ctrl_measure_luminosity(void)
 {
     TLOG_DBG("Measure luminosity");
     k_event_post(&opt_rgb_ctrl_event, OPT_RGB_CTRL_EVENT_TYPE_MEASURE_LUMINOSITY);
-}
-
-void
-opt_rgb_ctrl_turn_off_led_before_reboot(void)
-{
-    TLOG_INF("Turn off LED before reboot");
-    k_event_post(&opt_rgb_ctrl_event, OPT_RGB_CTRL_EVENT_TYPE_TURN_OFF_LED_BEFORE_REBOOT);
-    k_sem_take(&opt_rgb_ctrl_sem_led_turned_off, K_FOREVER);
 }
 
 void

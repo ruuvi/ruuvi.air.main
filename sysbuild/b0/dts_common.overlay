@@ -3,49 +3,50 @@
  */
 
 &gpregret1 {
-        status = "okay";
+	status = "okay";
 
-        boot_mode0: boot_mode@0 {
-                compatible = "zephyr,retention";
-                status = "okay";
-                reg = <0x0 0x1>;
-        };
+	boot_mode0: boot_mode@0 {
+		compatible = "zephyr,retention";
+		status = "okay";
+		reg = <0x0 0x1>;
+	};
 };
 
 / {
-        /* Memory for Segger RTT buffers, must be the same for B0, MCUBoot, fw_loader and the main app */
-        rtt_data: sram@20000000 {                         /* Label this node as 'shared_sram' */
-            compatible = "zephyr,memory-region", "mmio-sram";
-            reg = <0x20000000 DT_SIZE_K(4)>;                    /* Size 4 KiB */
-            zephyr,memory-region = "rtt_data";                  /* Create a linker region named "rtt_data" */
-            status = "okay";
-        };
+	/* Memory for Segger RTT buffers, must be the same for B0, MCUBoot, fw_loader and the main app */
+	rtt_data: sram@20000000 {               /* Label this node as 'shared_sram' */
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0x20000000 DT_SIZE_K(4)>;    /* Size 4 KiB */
+		zephyr,memory-region = "rtt_data";  /* Create a linker region named "rtt_data" */
+		status = "okay";
+	};
 };
 
 / {
-        /* Shared SRAM area for B0 <-> MCUBoot */
-        shared_sram: sram@20026E00 {                         /* Label this node as 'shared_sram' */
-            compatible = "zephyr,memory-region", "mmio-sram";
-            reg = <0x20026E00 DT_SIZE_K(100)>;                /* Size 100 KiB (must mutch with s0/s1 size in pm_static_release.yml) */
-            zephyr,memory-region = "SharedMem";              /* Create a linker region named "SharedMem" */
-            status = "okay";
-        };
+	/* Shared SRAM area for B0 <-> MCUBoot */
+	shared_sram: sram@20026E00 {            /* Label this node as 'shared_sram' */
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0x20026E00 DT_SIZE_K(100)>;  /* Size 100 KiB (must mutch with s0/s1 size in pm_static_release.yml) */
+		zephyr,memory-region = "SharedMem"; /* Create a linker region named "SharedMem" */
+		status = "okay";
+	};
 };
 
 / {
-        chosen {
-                zephyr,boot-mode = &boot_mode0;
-        };
+	chosen {
+		zephyr,boot-mode = &boot_mode0;
+	};
 };
 
 /* Reduce SRAM0 usage by 0x200 bytes to account for non-init area */
 /* Note: changing this setting has no effect, the value from the primary app.overlay will be used (0x3FE00) */
+
 &sram0 {
-        reg = <0x20000000 0x3FE00>;
+	reg = <0x20000000 0x3FE00>;
 };
 
 &uart0 {
-    disable-rx;
+	disable-rx;
 };
 
 

@@ -26,6 +26,8 @@ extern "C" {
 #define SEN66_INVALID_RAW_VALUE_VOC         (0x7FFFU)
 #define SEN66_INVALID_RAW_VALUE_NOX         (0x7FFFU)
 #define SEN66_INVALID_RAW_VALUE_CO2         (0xFFFFU)
+#define SEN66_MIN_VALID_RAW_VALUE_NOX       (1 * 10)
+#define SEN66_MAX_VALID_RAW_VALUE_NOX       (500 * 10)
 
 typedef struct sen5x_wrap_serial_number_t
 {

@@ -6,164 +6,208 @@ on:
     tags: [ '*' ]
   pull_request:
     branches: [ '*' ]
-    types: [opened, synchronize, reopened]
+    types: [ opened, synchronize, reopened ]
 
 env:
   NCS_VERSION: v2.8.0
+  PROJECT_DIR: ruuvi.air
 
 jobs:
   build:
     name: Build ruuvi_air_rgb_ctrl
     runs-on: ubuntu-24.04
 
+    strategy:
+      matrix:
+        image_tag: [ latest ]   # or pin: v2.8.0
+
+    defaults:
+      run:
+        shell: bash
+
     steps:
-      - name: Install dependencies
+      - name: Set image ref
+        id: img
         run: |
-          sudo apt-get update
-          sudo apt-get install -y srecord
+          echo "IMAGE_REF=ghcr.io/${{ github.repository_owner }}/ruuvi-air-ci:${{ matrix.image_tag }}" >> $GITHUB_OUTPUT
+
+      - name: Make image-ref hash
+        id: img_hash
+        run: |
+          echo "IMAGE_REF_HASH=$(echo -n '${{ steps.img.outputs.IMAGE_REF }}' | sha256sum | cut -c1-12)" >> $GITHUB_OUTPUT
+
+      # Log in to GHCR. This can be removed if the image is public.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load Docker image
+        run: |
+          set -xeuo pipefail
+          echo "Pulling image ${{ steps.img.outputs.IMAGE_REF }} ..."
+          docker pull "${{ steps.img.outputs.IMAGE_REF }}"
+
+      - name: Prepare cache directories
+        run: |
+          pwd
+          echo HOME: ~
+          echo HOME: $HOME
+          mkdir -p ~/.nrfutil
+          mkdir -p ~/bin
+          mkdir -p ~/ncs
+          mkdir -p ~/ncs/toolchains
+          mkdir -p ~/ncs/${NCS_VERSION}
+
+      - name: Restore cached 'nrfutil Toolchain Manager'
+        id: cache-nrfutil-tcm
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.nrfutil
+          key: nrfutil-tcm-${{ env.NCS_VERSION }}-v4
+
+      - name: Restore cached 'nRF Connect toolchains'
+        id: cache-ncs-toolchains
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ncs/toolchains
+          key: ncs-toolchains-${{ env.NCS_VERSION }}-v4
+
+      - name: Restore cached 'nRF Connect SDK ${{ env.NCS_VERSION }}'
+        id: cache-ncs-sdk
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ncs/${{ env.NCS_VERSION }}
+          key: ncs-sdk-${{ env.NCS_VERSION }}-v4
+
+      - name: Install nRF Connect SDK Toolchain and SDK
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
+        if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' || steps.cache-ncs-toolchains.outputs.cache-hit != 'true' || steps.cache-ncs-sdk.outputs.cache-hit != 'true' }}
+        run: |
+          set -xeuo pipefail
+          docker run --rm \
+            --user "$(id -u)":"$(id -g)" \
+            -e HOME=$HOME \
+            -e USER="$(id -un)" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(id -un)" \
+            -e HOST_GROUP="$(id -gn)" \
+            -v "$HOME:$HOME" \
+            -w $HOME \
+            -e NCS_VERSION="${NCS_VERSION}" \
+            "${IMAGE_REF}" \
+            bash -lc '
+              set -xeuo pipefail
+              export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
+              install_ncs_v2.8.0.sh
+              source /usr/local/bin/dev-env-v2.8.0.sh
+
+              which nrfutil
+              nrfutil --version || true
+              which west
+              west --version || true
+              which python3
+              python3 --version || true
+              which gcovr
+              gcovr --version || true
+              which yq
+              yq --version || true
+              which clang-format
+              clang-format --version || true
+
+              echo ">>> DONE"
+            '
+      - name: Save 'nrfutil Toolchain Manager'
+        if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.nrfutil
+          key: ${{ steps.cache-nrfutil-tcm.outputs.cache-primary-key }}
+
+      - name: Save 'nRF Connect toolchains' cache (only on miss)
+        if: ${{ steps.cache-ncs-toolchains.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ncs/toolchains
+          key: ${{ steps.cache-ncs-toolchains.outputs.cache-primary-key }}
+
+      - name: Save 'nRF Connect SDK' cache (only on miss)
+        if: ${{ steps.cache-ncs-sdk.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ncs/${{ env.NCS_VERSION }}
+          key: ${{ steps.cache-ncs-sdk.outputs.cache-primary-key }}
 
       - name: Checkout the code
         uses: actions/checkout@v4     # Checks-out repository under $GITHUB_WORKSPACE
         with:
-          path: ruuvi.air.c
+          path: ${{ env.PROJECT_DIR }}
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
           submodules: true
 
-      - name: Checkout submodules
-        run: cd ruuvi.air.c && git submodule update --init --recursive
-
-      # Step 1: Cache nrfutil
-      - name: Cache nrfutil
-        id: cache-nrfutil
-        uses: actions/cache@v4
-        with:
-          path: nrfutil-bin
-          key: nrfutil-${{ runner.os }}-v1
-
-      # Step 2: Install nrfutil if cache misses
-      - name: Install nrfutil
-        if: steps.cache-nrfutil.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p nrfutil-bin
-          wget "https://files.nordicsemi.com/ui/api/v1/download?repoKey=swtools&path=external/nrfutil/executables/x86_64-unknown-linux-gnu/nrfutil&isNativeBrowsing=false" -O nrfutil-bin/nrfutil
-          chmod +x nrfutil-bin/nrfutil
-
-      # Step 3: Add nrfutil to PATH
-      - name: Add nrfutil to PATH
-        run: echo "${{ github.workspace }}/nrfutil-bin" >> $GITHUB_PATH
-
-      # Step 4: Verify nrfutil Installation
-      - name: Verify nrfutil Installation
-        run: nrfutil --version
-
-      # Step 5: Cache nrfutil Toolchain Manager
-      - name: Cache nrfutil Toolchain Manager
-        id: cache-nrfutil-tcm
-        uses: actions/cache@v4
-        with:
-          path: ~/.nrfutil
-          key: nrfutil-tcm-${{ runner.os }}-v2
-
-      # Step 6: Install the Toolchain Manager
-      - name: Install nRF Connect SDK Toolchain Manager
-        if: steps.cache-nrfutil-tcm.outputs.cache-hit != 'true'
-        run: |
-          nrfutil install toolchain-manager
-          nrfutil install nrf5sdk-tools
-
-      # Step 7: Cache the nRF Connect SDK
-      - name: Cache nRF Connect SDK
-        id: cache-ncs
-        uses: actions/cache@v4
-        with:
-          path: ~/ncs
-          key: ncs-${{ runner.os }}-${{ env.NCS_VERSION }}-v1
-
-      # Step 8: Install the Toolchain and SDK if cache misses
-      - name: Install nRF Connect SDK Toolchain and SDK
-        if: steps.cache-ncs.outputs.cache-hit != 'true'
-        run: |
-          nrfutil toolchain-manager install --ncs-version $NCS_VERSION
-          # Workaround for "git-remote-https: error while loading shared libraries: libunistring.so.2: cannot open shared object file: No such file or directory"
-          # https://devzone.nordicsemi.com/f/nordic-q-a/106982/error-installing-nrf-connect-sdk-in-vscode-linux-libunistring-so-2-cannot-open-shared-object-file-no-such-file-or-directory
-          rm ~/ncs/toolchains/b81a7cd864/usr/lib/x86_64-linux-gnu/libpsl.so.5*
-          cd ~/ncs
-          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
-          west init -m https://github.com/nrfconnect/sdk-nrf --mr $NCS_VERSION $NCS_VERSION
-          cd ~/ncs/$NCS_VERSION
-          west update
-
-      - name: zephyr-export
-        run: |
-          set -x
-          cd ~/ncs/$NCS_VERSION
-          nrfutil toolchain-manager launch west -- zephyr-export
-
-      - name: Check directories
-        run: |
-          set -x
-          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
-          echo HOME: $HOME
-          echo PATH: $PATH
-          west --version
-          which clang-format
-          clang-format --version
-          which python
-          python --version
-          which python3
-          python3 --version
-          pwd
-          ls -la .
-          ls -la ./ruuvi.air.c
-          ls -la ~
-          ls -la ~/ncs
-          ls -la ~/ncs/$NCS_VERSION
-          cd ~/ncs/$NCS_VERSION/zephyr && git describe --tags
-
-      - name: Install Python dependencies
-        run: |
-          set -x
-          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
-          source ~/ncs/$NCS_VERSION/zephyr/zephyr-env.sh
-          python3 -m pip install --upgrade pip
-          pip3 install ecdsa
-
-      - name: Create symlink to code in ncs directory
-        run: |
-          set -x
-          ln -s $GITHUB_WORKSPACE/ruuvi.air.c ~/ncs/$NCS_VERSION/ruuvi.air.c
-
       - name: Build ruuvi_air_rgb_ctrl
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
         run: |
-          set -x
-          eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
-          source ~/ncs/$NCS_VERSION/zephyr/zephyr-env.sh
-          ORIG_DIR=$(pwd)
-          cd ~/ncs/$NCS_VERSION/zephyr/samples/bluetooth/hci_usb
-          west build -b nrf52840dk/nrf52840 -d build_nrf52840dk .
-          west build -b nrf52840dongle/nrf52840 -d build_nrf52840dongle .
-          nrfutil pkg generate --hw-version 52 --sd-req=0x00 \
-            --application build_nrf52840dongle/hci_usb/zephyr/zephyr.hex \
-            --application-version 1 build_nrf52840dongle/hci_usb.zip
-          mkdir -p ~/ncs/$NCS_VERSION/ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware
-          cp build_nrf52840dk/merged.hex ~/ncs/$NCS_VERSION/ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dk.hex
-          cp build_nrf52840dongle/hci_usb.zip ~/ncs/$NCS_VERSION/ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dongle.zip
-          cd $ORIG_DIR
+          set -xeuo pipefail
 
-      - name: Remove symlink to code in ncs directory
-        run: |
-          set -x
-          rm ~/ncs/$NCS_VERSION/ruuvi.air.c
+          mv "$GITHUB_WORKSPACE/${PROJECT_DIR}" "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}"
+
+          docker run --rm \
+            --network none \
+            --cap-drop NET_ADMIN \
+            --cap-drop NET_RAW \
+            --cap-drop NET_BIND_SERVICE \
+            --user "$(id -u)":"$(id -g)" \
+            -e HOME=$HOME \
+            -e USER="$(id -un)" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(id -un)" \
+            -e HOST_GROUP="$(id -gn)" \
+            -v "$HOME:$HOME" \
+            -v "$RUNNER_TEMP/signing_keys:$HOME/.signing_keys:ro" \
+            -w $HOME \
+            -e NCS_VERSION="${NCS_VERSION}" \
+            -e PROJECT_DIR="${PROJECT_DIR}" \
+            "${IMAGE_REF}" \
+            bash -lc '
+              set -xeuo pipefail
+
+              export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
+              echo ">>> Init dev env"
+              source /usr/local/bin/dev-env-v2.8.0.sh
+
+              cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
+
+              cd $HOME/ncs/$NCS_VERSION/zephyr/samples/bluetooth/hci_usb
+              west build -b nrf52840dk/nrf52840 -d build_nrf52840dk .
+              west build -b nrf52840dongle/nrf52840 -d build_nrf52840dongle .
+              nrfutil pkg generate --hw-version 52 --sd-req=0x00 \
+                --application build_nrf52840dongle/hci_usb/zephyr/zephyr.hex \
+                --application-version 1 build_nrf52840dongle/hci_usb.zip
+              mkdir -p "$HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}/ruuvi_air_rgb_ctrl/firmware"
+              cp build_nrf52840dk/merged.hex "$HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dk.hex"
+              cp build_nrf52840dongle/hci_usb.zip "$HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dongle.zip"
+            '
+
+          mv "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}" "$GITHUB_WORKSPACE/${PROJECT_DIR}"
 
       - name: Upload artifact ruuvi_air_rgb_ctrl
         uses: actions/upload-artifact@v4
         with:
           name: ruuvi_air_rgb_ctrl
           path: |
-            ruuvi.air.c/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.py
-            ruuvi.air.c/ruuvi_air_rgb_ctrl/requirements.txt
-            ruuvi.air.c/ruuvi_air_rgb_ctrl/README.md
-            ruuvi.air.c/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.bat
-            ruuvi.air.c/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.sh
-            ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dk.hex
-            ruuvi.air.c/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dongle.zip
+            ${{ env.PROJECT_DIR }}/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.py
+            ${{ env.PROJECT_DIR }}/ruuvi_air_rgb_ctrl/requirements.txt
+            ${{ env.PROJECT_DIR }}/ruuvi_air_rgb_ctrl/README.md
+            ${{ env.PROJECT_DIR }}/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.bat
+            ${{ env.PROJECT_DIR }}/ruuvi_air_rgb_ctrl/ruuvi_air_rgb_ctrl.sh
+            ${{ env.PROJECT_DIR }}/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dk.hex
+            ${{ env.PROJECT_DIR }}/ruuvi_air_rgb_ctrl/firmware/hci_usb_nrf52840dongle.zip

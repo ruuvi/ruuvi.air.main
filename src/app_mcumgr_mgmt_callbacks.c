@@ -10,15 +10,12 @@
 #include <zephyr/logging/log.h>
 #include "sensors.h"
 #include "app_settings.h"
+#include "ruuvi_fw_update.h"
 #include "tlog.h"
 
 LOG_MODULE_REGISTER(mcumgr_mgmt, LOG_LEVEL_INF);
 
-#define RUUVI_FW_PATH_MAX_SIZE      (64)
-#define RUUVI_FW_MCUBOOT0_FILE_NAME "signed_by_mcuboot_and_b0_mcuboot.bin"
-#define RUUVI_FW_MCUBOOT1_FILE_NAME "signed_by_mcuboot_and_b0_s1_image.bin"
-#define RUUVI_FW_LOADER_FILE_NAME   "ruuvi_air_fw_loader.signed.bin"
-#define RUUVI_FW_APP_FILE_NAME      "ruuvi_air_fw.signed.bin"
+#define RUUVI_FW_PATH_MAX_SIZE (64)
 
 static const char* g_p_mnt_point;
 static uint32_t    g_upload_cnt;

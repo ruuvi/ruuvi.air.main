@@ -222,9 +222,9 @@ mic_pdm_get_measurements(spl_db_t* const p_inst_db_a, spl_db_t* const p_avg_db_a
 {
 #if defined(CONFIG_RUUVI_AIR_MIC_NONE) \
     || !(DT_NODE_EXISTS(DT_NODELABEL(dmic_dev)) && DT_NODE_HAS_STATUS(DT_NODELABEL(dmic_dev), okay))
-    *p_inst_db_a  = 0;
-    *p_avg_db_a   = 0;
-    *p_max_spl_db = 0;
+    *p_inst_db_a  = SPL_DB_INVALID;
+    *p_avg_db_a   = SPL_DB_INVALID;
+    *p_max_spl_db = SPL_DB_INVALID;
 #else
     k_mutex_lock(&mic_pdm_mutex, K_FOREVER);
     *p_inst_db_a  = g_inst_db_a;

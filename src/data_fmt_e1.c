@@ -8,7 +8,8 @@ re_e1_data_t
 data_fmt_e1_init(
     const sensors_measurement_t* const p_measurement,
     const re_e1_seq_cnt_t              seq_cnt,
-    const re_e1_mac_addr_t             radio_mac)
+    const re_e1_mac_addr_t             radio_mac,
+    const re_e1_flags_t                flags)
 {
     const re_e1_data_t data = {
         .temperature_c     = sen66_wrap_conv_raw_to_float_temperature(p_measurement->sen66.ambient_temperature),
@@ -26,12 +27,7 @@ data_fmt_e1_init(
         .sound_avg_dba     = (re_float)p_measurement->sound_avg_dba,
         .sound_peak_spl_db = (re_float)p_measurement->sound_peak_spl_db,
         .seq_cnt           = seq_cnt,
-
-        .flags = {
-            .flag_calibration_in_progress = false,
-            .flag_button_pressed          = false,
-            .flag_rtc_running_on_boot     = false,
-        },
+        .flags             = flags,
 
         .address = radio_mac,
     };

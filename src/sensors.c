@@ -75,6 +75,7 @@ static sensors_measurement_t g_measurements = {
     .sound_avg_dba = NAN,
     .sound_peak_spl_db = NAN,
 };
+static time_t g_nox_valid_timestamp;
 
 #if USE_SENSOR_DPS310
 const struct device* const dev_dps310 = DEVICE_DT_GET_ONE(infineon_dps310);
@@ -320,6 +321,30 @@ sensors_save_measurement_sen66(const sen66_wrap_measurement_t* const p_sen66)
 {
     k_mutex_lock(&sensors_poll_mutex, K_FOREVER);
     g_measurements.sen66 = *p_sen66;
+    if ((SEN66_INVALID_RAW_VALUE_NOX != p_sen66->nox_index)
+        && ((SEN66_MIN_VALID_RAW_VALUE_NOX <= p_sen66->nox_index)
+            && (p_sen66->nox_index <= SEN66_MAX_VALID_RAW_VALUE_NOX)))
+    {
+        const time_t cur_time = time(NULL);
+        if (0 == g_nox_valid_timestamp)
+        {
+            TLOG_INF("SEN66: NOx valid timestamp updated: %u", (unsigned)cur_time);
+            g_nox_valid_timestamp = cur_time;
+        }
+        if ((cur_time - g_nox_valid_timestamp) < CONFIG_RUUVI_AIR_SEN66_NOX_CALIBRATION_TIMEOUT)
+        {
+            g_measurements.flag_nox_calibration_in_progress = true;
+        }
+        else
+        {
+            g_measurements.flag_nox_calibration_in_progress = false;
+        }
+    }
+    else
+    {
+        g_nox_valid_timestamp                           = 0;
+        g_measurements.flag_nox_calibration_in_progress = true;
+    }
     k_mutex_unlock(&sensors_poll_mutex);
 }
 #endif

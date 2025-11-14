@@ -23,3 +23,6 @@ VERSION
 # Mac OSX Files
 .DS_Store
 
+# SonarCube Scan
+.scannerwork
+

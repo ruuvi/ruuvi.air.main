@@ -9,10 +9,6 @@
 #include "avg_accum.h"
 #include "ruuvi_endpoint_e1.h"
 #include "data_fmt_e1.h"
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-#include "ruuvi_endpoint_e0.h"
-#include "data_fmt_e0.h"
-#endif
 
 #define MOVING_AVG_WINDOW_SIZE_SECONDS (5 * 60U)
 
@@ -204,7 +200,7 @@ moving_avg_append(const sensors_measurement_t* const p_measurement)
 }
 
 hist_log_record_data_t
-moving_avg_get_accum(const measurement_cnt_t measurement_cnt, const radio_mac_t radio_mac)
+moving_avg_get_accum(const measurement_cnt_t measurement_cnt, const radio_mac_t radio_mac, const sensors_flags_t flags)
 {
     const moving_avg_data_t avg_data = moving_avg_data_get_avg(&g_moving_avg2);
 
@@ -234,8 +230,16 @@ moving_avg_get_accum(const measurement_cnt_t measurement_cnt, const radio_mac_t 
                                  : (float)avg_data.sound_peak_spl_db_x100 / 100.0f,
     };
 
-    const re_e1_data_t e1_data = data_fmt_e1_init(&measurement_avg, measurement_cnt, radio_mac);
-    uint8_t            buffer[RE_E1_DATA_LENGTH];
+    const re_e1_data_t e1_data = data_fmt_e1_init(
+        &measurement_avg,
+        measurement_cnt,
+        radio_mac,
+        (re_e1_flags_t) {
+            .flag_calibration_in_progress = flags.flag_calibration_in_progress,
+            .flag_button_pressed          = flags.flag_button_pressed,
+            .flag_rtc_running_on_boot     = flags.flag_rtc_running_on_boot,
+        });
+    uint8_t buffer[RE_E1_DATA_LENGTH];
     (void)re_e1_encode(buffer, &e1_data);
     hist_log_record_data_t record = { 0 };
     memcpy(&record.buf[0], buffer, sizeof(record.buf));

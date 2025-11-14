@@ -96,10 +96,6 @@ target_sources(app PRIVATE
         src/ble_adv.h
         src/ble_mgmt_hooks.c
         src/ble_mgmt_hooks.h
-        src/data_fmt_e0.c
-        src/data_fmt_e0.h
-        src/data_fmt_f0.c
-        src/data_fmt_f0.h
         src/data_fmt_e1.c
         src/data_fmt_e1.h
         src/data_fmt_6.c

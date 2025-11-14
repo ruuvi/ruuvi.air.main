@@ -21,7 +21,10 @@ radio_mac_t
 ble_adv_get_mac(void);
 
 void
-ble_adv_restart(const sensors_measurement_t* const p_measurement, const measurement_cnt_t measurement_cnt);
+ble_adv_restart(
+    const sensors_measurement_t* const p_measurement,
+    const measurement_cnt_t            measurement_cnt,
+    const sensors_flags_t              flags);
 
 #ifdef __cplusplus
 }

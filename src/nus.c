@@ -11,35 +11,10 @@
 #include "ruuvi_endpoints.h"
 #include "hist_log.h"
 #include "nus_req.h"
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-#include "ruuvi_endpoint_e0.h"
-#include "ruuvi_endpoint_e1.h"
-#endif
 
 LOG_MODULE_REGISTER(nus, LOG_LEVEL_INF);
 
 #define RUUVI_AIR_NUS_MAX_PACKET_LENGTH (244U)
-
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-
-#define RE_LOG_WRITE_AIRQ_V1_TEMPERATURE_MSB_OFS (4U)  //!< MSB offset of temperature.
-#define RE_LOG_WRITE_AIRQ_V1_HUMIDITY_MSB_OFS    (6U)  //!< MSB offset of humidity.
-#define RE_LOG_WRITE_AIRQ_V1_PRESSURE_MSB_OFS    (8U)  //!< MSB offset of pressure.
-#define RE_LOG_WRITE_AIRQ_V1_PM1P0_MSB_OFS       (10U) //!< MSB offset of pm1p0.
-#define RE_LOG_WRITE_AIRQ_V1_PM2P5_MSB_OFS       (12U) //!< MSB offset of pm2p5.
-#define RE_LOG_WRITE_AIRQ_V1_PM4P0_MSB_OFS       (14U) //!< MSB offset of pm4p0.
-#define RE_LOG_WRITE_AIRQ_V1_PM10P0_MSB_OFS      (16U) //!< MSB offset of pm10p0.
-#define RE_LOG_WRITE_AIRQ_V1_CO2_MSB_OFS         (18U) //!< MSB offset of CO2.
-#define RE_LOG_WRITE_AIRQ_V1_VOC_MSB_OFS         (20U) //!< MSB offset of VOC index.
-#define RE_LOG_WRITE_AIRQ_V1_NOX_MSB_OFS         (22U) //!< MSB offset of NOx index.
-#define RE_LOG_WRITE_AIRQ_V1_LUMINOSITY_MSB_OFS  (24U) //!< MSB offset of luminosity.
-#define RE_LOG_WRITE_AIRQ_V1_SOUND_DBA_AVG_OFS   (26U) //!< MSB offset of sound_dba_avg.
-#define RE_LOG_WRITE_AIRQ_V1_SOUND_DBA_PEAK_OFS  (27U) //!< MSB offset of sound_dba_peak.
-#define RE_LOG_WRITE_AIRQ_V1_VOLTAGE_MSB_OFS     (28U) //!< MSB offset of voltage.
-#define RE_LOG_WRITE_AIRQ_V1_FLAGS_MSB_OFS       (30U) //!< MSB offset of flags.
-#define RE_LOG_WRITE_AIRQ_V1_RECORD_LEN          (32U) //!< Length of record.
-
-#endif /* RUUVI_DATA_FORMAT_E0_F0 */
 
 typedef struct nus_hist_log_user_data_t
 {
@@ -106,28 +81,6 @@ nus_hist_log_pack_uint32(uint8_t* const p_buf, const uint32_t val)
     p_buf[3] = (uint8_t)(val & 0xFFU);
 }
 
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-static void
-nus_hist_log_pack_uint16(uint8_t* const p_buf, const uint16_t val)
-{
-    p_buf[0] = (uint8_t)((val >> 8U) & 0xFFU);
-    p_buf[1] = (uint8_t)(val & 0xFFU);
-}
-
-static void
-nus_hist_log_pack_int16(uint8_t* const p_buf, const int16_t val)
-{
-    const uint16_t uval = (uint16_t)val;
-    p_buf[0]            = (uint8_t)((uval >> 8U) & 0xFFU);
-    p_buf[1]            = (uint8_t)(uval & 0xFFU);
-}
-
-static void
-nus_hist_log_pack_uint8(uint8_t* const p_buf, const uint8_t val)
-{
-    p_buf[0] = val;
-}
-#else
 static void
 nus_hist_log_pack_buffer(uint8_t* const p_buf, const uint8_t* const p_data, const size_t len)
 {
@@ -141,7 +94,6 @@ nus_hist_log_pack_buffer(uint8_t* const p_buf, const uint8_t* const p_data, cons
     }
     memcpy(p_buf, p_data, len);
 }
-#endif // RUUVI_DATA_FORMAT_E0_F0
 
 static void
 nus_hist_log_pack_record(
@@ -150,95 +102,7 @@ nus_hist_log_pack_record(
     const hist_log_record_data_t* const p_hist_record)
 {
     nus_hist_log_pack_uint32(&p_buf[RE_LOG_WRITE_AIRQ_TIMESTAMP_MSB_OFS], timestamp_s);
-#if !defined(RUUVI_DATA_FORMAT_E0_F0)
     nus_hist_log_pack_buffer(&p_buf[RE_LOG_WRITE_AIRQ_PAYLOAD_OFS], p_hist_record->buf, sizeof(p_hist_record->buf));
-#else
-
-    static re_e1_data_t e1_data = { 0 };
-    {
-        static uint8_t buffer_e1[RE_E1_OFFSET_PAYLOAD + RE_E1_DATA_LENGTH] = { 0 };
-        memcpy(&buffer_e1[RE_E1_OFFSET_PAYLOAD], p_hist_record->buf, sizeof(p_hist_record->buf));
-        (void)re_e1_decode(buffer_e1, &e1_data);
-    }
-
-    const re_e0_data_t e0_data = {
-        .temperature_c                = e1_data.temperature_c,
-        .humidity_rh                  = e1_data.humidity_rh,
-        .pressure_pa                  = e1_data.pressure_pa,
-        .pm1p0_ppm                    = e1_data.pm1p0_ppm,
-        .pm2p5_ppm                    = e1_data.pm2p5_ppm,
-        .pm4p0_ppm                    = e1_data.pm4p0_ppm,
-        .pm10p0_ppm                   = e1_data.pm10p0_ppm,
-        .co2                          = e1_data.co2,
-        .voc_index                    = e1_data.voc,
-        .nox_index                    = e1_data.nox,
-        .luminosity                   = e1_data.luminosity,
-        .sound_avg_dba                = e1_data.sound_avg_dba,
-        .sound_peak_spl_db            = e1_data.sound_peak_spl_db,
-        .measurement_count            = e1_data.seq_cnt & 0xFFFFU,
-        .voltage                      = 0,
-        .flag_usb_on                  = false,
-        .flag_low_battery             = false,
-        .flag_calibration_in_progress = false,
-        .flag_boost_mode              = false,
-        .address                      = e1_data.address,
-    };
-    static uint8_t buffer[RE_E0_DATA_LENGTH];
-    (void)re_e0_encode(buffer, &e0_data);
-
-    typedef struct hist_log_record_data_v1_t
-    {
-        int16_t  temperature;       // Offset: 4
-        uint16_t humidity;          // Offset: 6
-        uint16_t pressure;          // Offset: 8
-        uint16_t pm1p0;             // Offset: 10
-        uint16_t pm2p5;             // Offset: 12
-        uint16_t pm4p0;             // Offset: 14
-        uint16_t pm10p0;            // Offset: 16
-        uint16_t co2;               // Offset: 18
-        uint16_t voc_index;         // Offset: 20
-        uint16_t nox_index;         // Offset: 22
-        uint16_t luminosity;        // Offset: 24
-        uint8_t  sound_avg_dba;     // Offset: 26
-        uint8_t  sound_peak_spl_db; // Offset: 27
-        uint8_t  battery_mv;        // Offset: 28
-        uint8_t  flags;             // Offset: 29
-    } hist_log_record_data_v1_t;
-
-    const hist_log_record_data_v1_t hist_record = {
-        .temperature       = (buffer[RE_E0_OFFSET_TEMPERATURE_MSB] << 8) + buffer[RE_E0_OFFSET_TEMPERATURE_LSB],
-        .humidity          = (buffer[RE_E0_OFFSET_HUMIDITY_MSB] << 8) + buffer[RE_E0_OFFSET_HUMIDITY_LSB],
-        .pressure          = (buffer[RE_E0_OFFSET_PRESSURE_MSB] << 8) + buffer[RE_E0_OFFSET_PRESSURE_LSB],
-        .pm1p0             = (buffer[RE_E0_OFFSET_PM_1_0_MSB] << 8) + buffer[RE_E0_OFFSET_PM_1_0_LSB],
-        .pm2p5             = (buffer[RE_E0_OFFSET_PM_2_5_MSB] << 8) + buffer[RE_E0_OFFSET_PM_2_5_LSB],
-        .pm4p0             = (buffer[RE_E0_OFFSET_PM_4_0_MSB] << 8) + buffer[RE_E0_OFFSET_PM_4_0_LSB],
-        .pm10p0            = (buffer[RE_E0_OFFSET_PM_10_0_MSB] << 8) + buffer[RE_E0_OFFSET_PM_10_0_LSB],
-        .co2               = (buffer[RE_E0_OFFSET_CO2_MSB] << 8) + buffer[RE_E0_OFFSET_CO2_LSB],
-        .voc_index         = (buffer[RE_E0_OFFSET_VOC_INDEX_MSB] << 8) + buffer[RE_E0_OFFSET_VOC_INDEX_LSB],
-        .nox_index         = (buffer[RE_E0_OFFSET_NOX_INDEX_MSB] << 8) + buffer[RE_E0_OFFSET_NOX_INDEX_LSB],
-        .luminosity        = (buffer[RE_E0_OFFSET_LUMINOSITY_MSB] << 8) + buffer[RE_E0_OFFSET_LUMINOSITY_LSB],
-        .sound_avg_dba     = buffer[RE_E0_OFFSET_SOUND_AVG_DBA],
-        .sound_peak_spl_db = buffer[RE_E0_OFFSET_SOUND_PEAK_SPL_DB],
-        .battery_mv        = buffer[RE_E0_OFFSET_VOLTAGE],
-        .flags             = buffer[RE_E0_OFFSET_FLAGS],
-    };
-
-    nus_hist_log_pack_int16(&p_buf[RE_LOG_WRITE_AIRQ_V1_TEMPERATURE_MSB_OFS], hist_record.temperature);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_HUMIDITY_MSB_OFS], hist_record.humidity);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_PRESSURE_MSB_OFS], hist_record.pressure);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_PM1P0_MSB_OFS], hist_record.pm1p0);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_PM2P5_MSB_OFS], hist_record.pm2p5);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_PM4P0_MSB_OFS], hist_record.pm4p0);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_PM10P0_MSB_OFS], hist_record.pm10p0);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_CO2_MSB_OFS], hist_record.co2);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_VOC_MSB_OFS], hist_record.voc_index);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_NOX_MSB_OFS], hist_record.nox_index);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_LUMINOSITY_MSB_OFS], hist_record.luminosity);
-    nus_hist_log_pack_uint8(&p_buf[RE_LOG_WRITE_AIRQ_V1_SOUND_DBA_AVG_OFS], hist_record.sound_avg_dba);
-    nus_hist_log_pack_uint8(&p_buf[RE_LOG_WRITE_AIRQ_V1_SOUND_DBA_PEAK_OFS], hist_record.sound_peak_spl_db);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_VOLTAGE_MSB_OFS], 0);
-    nus_hist_log_pack_uint16(&p_buf[RE_LOG_WRITE_AIRQ_V1_FLAGS_MSB_OFS], 0);
-#endif
 }
 
 static bool
@@ -289,12 +153,7 @@ nus_hist_log_record_handler(
     nus_hist_log_user_data_t* const p_data      = (nus_hist_log_user_data_t*)p_user_data;
     const uint32_t                  timestamp_s = timestamp_local + p_data->local_time_offset_s;
 
-    const uint32_t record_led =
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-        RE_LOG_WRITE_AIRQ_V1_RECORD_LEN;
-#else
-        RE_LOG_WRITE_AIRQ_RECORD_LEN;
-#endif
+    const uint32_t record_led = RE_LOG_WRITE_AIRQ_RECORD_LEN;
 
     if (0 == p_data->msg_offset)
     {
@@ -345,12 +204,7 @@ app_sensor_send_eof(struct bt_conn* const p_conn, nus_hist_log_user_data_t* cons
         }
     }
 
-    const uint32_t record_led =
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-        RE_LOG_WRITE_AIRQ_V1_RECORD_LEN;
-#else
-        RE_LOG_WRITE_AIRQ_RECORD_LEN;
-#endif
+    const uint32_t record_led = RE_LOG_WRITE_AIRQ_RECORD_LEN;
 
     memset(&p_data->msg[0], 0xff, sizeof(p_data->msg));
 

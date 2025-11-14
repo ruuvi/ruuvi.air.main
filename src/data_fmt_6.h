@@ -17,7 +17,8 @@ re_6_data_t
 data_fmt_6_init(
     const sensors_measurement_t* const p_measurement,
     const uint16_t                     measurement_cnt,
-    const uint64_t                     radio_mac);
+    const uint64_t                     radio_mac,
+    const re_6_flags_t                 flags);
 
 #ifdef __cplusplus
 }

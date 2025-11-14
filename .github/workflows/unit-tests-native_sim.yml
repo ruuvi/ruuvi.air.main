@@ -1,0 +1,194 @@
+name: Unit-tests for native_sim
+
+on:
+  push:
+    branches: [ master ]
+    tags: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+    types: [ opened, synchronize, reopened ]
+
+env:
+  NCS_VERSION: v2.8.0
+  PROJECT_DIR: ruuvi.air
+
+jobs:
+  unit-tests:
+    name: Build and run unit tests
+    runs-on: ubuntu-24.04
+
+    strategy:
+      matrix:
+        image_tag: [ latest ]   # or pin: v2.8.0
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Set image ref
+        id: img
+        run: |
+          echo "IMAGE_REF=ghcr.io/${{ github.repository_owner }}/ruuvi-air-ci:${{ matrix.image_tag }}" >> $GITHUB_OUTPUT
+
+      - name: Make image-ref hash
+        id: img_hash
+        run: |
+          echo "IMAGE_REF_HASH=$(echo -n '${{ steps.img.outputs.IMAGE_REF }}' | sha256sum | cut -c1-12)" >> $GITHUB_OUTPUT
+
+      # Log in to GHCR. This can be removed if the image is public.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load Docker image
+        run: |
+          set -xeuo pipefail
+          echo "Pulling image ${{ steps.img.outputs.IMAGE_REF }} ..."
+          docker pull "${{ steps.img.outputs.IMAGE_REF }}"
+
+      - name: Prepare cache directories
+        run: |
+          pwd
+          echo HOME: ~
+          echo HOME: $HOME
+          mkdir -p ~/.nrfutil
+          mkdir -p ~/bin
+          mkdir -p ~/ncs
+          mkdir -p ~/ncs/toolchains
+          mkdir -p ~/ncs/${NCS_VERSION}
+
+      - name: Restore cached 'nrfutil Toolchain Manager'
+        id: cache-nrfutil-tcm
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.nrfutil
+          key: nrfutil-tcm-${{ env.NCS_VERSION }}-v4
+
+      - name: Restore cached 'nRF Connect toolchains'
+        id: cache-ncs-toolchains
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ncs/toolchains
+          key: ncs-toolchains-${{ env.NCS_VERSION }}-v4
+
+      - name: Restore cached 'nRF Connect SDK ${{ env.NCS_VERSION }}'
+        id: cache-ncs-sdk
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/ncs/${{ env.NCS_VERSION }}
+          key: ncs-sdk-${{ env.NCS_VERSION }}-v4
+
+      - name: Install nRF Connect SDK Toolchain and SDK
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
+        if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' || steps.cache-ncs-toolchains.outputs.cache-hit != 'true' || steps.cache-ncs-sdk.outputs.cache-hit != 'true' }}
+        run: |
+          set -xeuo pipefail
+          docker run --rm \
+            --user "$(id -u)":"$(id -g)" \
+            -e HOME=$HOME \
+            -e USER="$(id -un)" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(id -un)" \
+            -e HOST_GROUP="$(id -gn)" \
+            -v "$HOME:$HOME" \
+            -w $HOME \
+            -e NCS_VERSION="${NCS_VERSION}" \
+            "${IMAGE_REF}" \
+            bash -lc '
+              set -xeuo pipefail
+              export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
+              install_ncs_v2.8.0.sh
+              source /usr/local/bin/dev-env-v2.8.0.sh
+
+              which nrfutil
+              nrfutil --version || true
+              which west
+              west --version || true
+              which python3
+              python3 --version || true
+              which gcovr
+              gcovr --version || true
+              which yq
+              yq --version || true
+              which clang-format
+              clang-format --version || true
+
+              echo ">>> DONE"
+            '
+      - name: Save 'nrfutil Toolchain Manager'
+        if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.nrfutil
+          key: ${{ steps.cache-nrfutil-tcm.outputs.cache-primary-key }}
+
+      - name: Save 'nRF Connect toolchains' cache (only on miss)
+        if: ${{ steps.cache-ncs-toolchains.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ncs/toolchains
+          key: ${{ steps.cache-ncs-toolchains.outputs.cache-primary-key }}
+
+      - name: Save 'nRF Connect SDK' cache (only on miss)
+        if: ${{ steps.cache-ncs-sdk.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/ncs/${{ env.NCS_VERSION }}
+          key: ${{ steps.cache-ncs-sdk.outputs.cache-primary-key }}
+
+      - name: Checkout the code
+        uses: actions/checkout@v4     # Checks-out repository under $GITHUB_WORKSPACE
+        with:
+          path: ${{ env.PROJECT_DIR }}
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          submodules: true
+
+      - name: Build and run tests
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
+        run: |
+          set -xeuo pipefail
+
+          mv "$GITHUB_WORKSPACE/${PROJECT_DIR}" "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}"
+
+          docker run --rm \
+            --network none \
+            --cap-drop NET_ADMIN \
+            --cap-drop NET_RAW \
+            --cap-drop NET_BIND_SERVICE \
+            --user "$(id -u)":"$(id -g)" \
+            -e HOME=$HOME \
+            -e USER="$(id -un)" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -e HOST_USER="$(id -un)" \
+            -e HOST_GROUP="$(id -gn)" \
+            -v "$HOME:$HOME" \
+            -v "$RUNNER_TEMP/signing_keys:$HOME/.signing_keys:ro" \
+            -w $HOME \
+            -e NCS_VERSION="${NCS_VERSION}" \
+            -e PROJECT_DIR="${PROJECT_DIR}" \
+            "${IMAGE_REF}" \
+            bash -lc '
+              set -xeuo pipefail
+
+              export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
+              echo ">>> Init dev env"
+              source /usr/local/bin/dev-env-v2.8.0.sh
+
+              cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
+
+              echo ">>> Running unit-tests"
+              twister -c -p native_sim -v -T . --inline-logs
+            '
+
+          mv "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}" "$GITHUB_WORKSPACE/${PROJECT_DIR}"
+

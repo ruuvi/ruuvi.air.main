@@ -8,7 +8,8 @@ re_6_data_t
 data_fmt_6_init(
     const sensors_measurement_t* const p_measurement,
     const uint16_t                     measurement_cnt,
-    const uint64_t                     radio_mac)
+    const uint64_t                     radio_mac,
+    const re_6_flags_t                 flags)
 {
     // re_6_mac_address_t address
     const re_6_data_t data = {
@@ -22,18 +23,11 @@ data_fmt_6_init(
         .luminosity    = (re_float)p_measurement->luminosity,
         .sound_avg_dba = (re_float)p_measurement->sound_avg_dba,
         .seq_cnt2      = measurement_cnt & RE_BYTE_MASK,
+        .flags         = flags,
 
-        .flags = {
-            .flag_calibration_in_progress = false,
-            .flag_button_pressed          = false,
-            .flag_rtc_running_on_boot     = false,
-        },
-
-        .mac_addr_24 = {
-            .byte3 = (uint8_t) ((radio_mac >> RE_BYTE_2_SHIFT) & RE_BYTE_MASK),
-            .byte4 = (uint8_t) ((radio_mac >> RE_BYTE_1_SHIFT) & RE_BYTE_MASK),
-            .byte5 = (uint8_t) ((radio_mac >> RE_BYTE_0_SHIFT) & RE_BYTE_MASK)
-        }
+        .mac_addr_24 = { .byte3 = (uint8_t)((radio_mac >> RE_BYTE_2_SHIFT) & RE_BYTE_MASK),
+                         .byte4 = (uint8_t)((radio_mac >> RE_BYTE_1_SHIFT) & RE_BYTE_MASK),
+                         .byte5 = (uint8_t)((radio_mac >> RE_BYTE_0_SHIFT) & RE_BYTE_MASK) }
     };
     return data;
 }

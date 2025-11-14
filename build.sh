@@ -41,6 +41,7 @@ if [ ! -d "$HOME/.signing_keys" ]; then
 fi
 
 # Initialize defaults (if any)
+BUILD_DIR=""
 board=""
 board_rev_name=""
 board_rev=""
@@ -57,6 +58,10 @@ flag_prod=false
 # Loop over all arguments
 for arg in "$@"; do
   case $arg in
+    --build_dir=*)
+      BUILD_DIR="${arg#*=}"
+      shift
+      ;;
     --board=*)
       board="${arg#*=}"
       shift
@@ -444,7 +449,7 @@ case "$build_mode" in
 
       -Db0_EXTRA_DTC_OVERLAY_FILE="$PWD/sysbuild/b0/$BOARD_DTS_OVERLAY;$PWD/sysbuild/b0/dts_common.overlay"
       -Dmcuboot_EXTRA_DTC_OVERLAY_FILE="$PWD/sysbuild/mcuboot/$BOARD_DTS_OVERLAY;$PWD/sysbuild/mcuboot/dts_common.overlay"
-      -Dfirmware_loader_EXTRA_DTC_OVERLAY_FILE="$PWD/fw_loader/$BOARD_DTS_OVERLAY;$PWD/fw_loader/dts_common.overlay"
+      -Dfirmware_loader_EXTRA_DTC_OVERLAY_FILE="$PWD/fw_loader/$BOARD_DTS_OVERLAY;$PWD/fw_loader/dts_${board}_hw${board_rev}.overlay;$PWD/fw_loader/dts_common.overlay"
     )
     if [ "$flag_prod" = true ]; then
       BUILD_SUFFIX="-prod"
@@ -473,7 +478,9 @@ if [ -n "$extra_conf" ]; then
   CONF_FILE="$CONF_FILE;$extra_conf"
 fi
 
-BUILD_DIR="build_${board}_${board_suffix}_${build_mode}${build_dir_suffix:+_$build_dir_suffix}${BUILD_SUFFIX}"
+if [ -z "$BUILD_DIR" ]; then
+  BUILD_DIR="build_${board}_${board_suffix}_${build_mode}${build_dir_suffix:+_$build_dir_suffix}${BUILD_SUFFIX}"
+fi
 
 if [ "$flag_clean" = true ]; then
   rm -rf $BUILD_DIR

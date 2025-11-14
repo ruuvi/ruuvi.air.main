@@ -126,6 +126,12 @@ config RUUVI_AIR_SEN66_VOC_ALG_STATE_RECOVERY_TIMEOUT
 	  If the saved state is older than this value, it will be ignored.
 	  Allowed values are in range 1..86400.
 
+config RUUVI_AIR_SEN66_NOX_CALIBRATION_TIMEOUT
+	int "SEN66 NOx calibration timeout (seconds)"
+	default 21600
+	help
+	  Timeout for the SEN66 NOx sensor calibration process in seconds.
+
 config RUUVI_AIR_OPT4060_LUMINOSITY_MULTIPLIER
 	int "OPT4060 luminosity multiplier"
 	default 310

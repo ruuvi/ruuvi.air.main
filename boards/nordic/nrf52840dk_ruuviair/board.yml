@@ -7,7 +7,7 @@ board:
     exact: true
     revisions:
       - name: "1"
-      - name: "2"    
+      - name: "2"
   socs:
   # Physical nRF52840 SoC on PCA10056
   - name: nrf52840

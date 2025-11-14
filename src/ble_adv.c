@@ -6,6 +6,7 @@
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/services/nus.h>
+#include <zephyr/logging/log_backend_ble.h>
 #include "ruuvi_air_types.h"
 #include "tlog.h"
 #include "nfc.h"
@@ -13,16 +14,11 @@
 #include "utils.h"
 #include "ble_mgmt_hooks.h"
 #include "opt_rgb_ctrl.h"
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-#include "data_fmt_e0.h"
-#include "data_fmt_f0.h"
-#else
 #include "data_fmt_e1.h"
 #include "data_fmt_6.h"
+
 _Static_assert(sizeof(measurement_cnt_t) == sizeof(re_e1_seq_cnt_t), "");
 _Static_assert(sizeof(radio_mac_t) == sizeof(re_e1_mac_addr_t), "");
-#endif
-#include <zephyr/logging/log_backend_ble.h>
 
 LOG_MODULE_REGISTER(ble_adv, LOG_LEVEL_INF);
 
@@ -194,36 +190,25 @@ static struct k_work g_advertise_work;
 
 static sensors_measurement_t g_measurement;
 static measurement_cnt_t     g_measurement_cnt;
+static sensors_flags_t       g_ble_adv_flags;
 
 static void
 update_ble_adv_data(
     const sensors_measurement_t* const p_measurement,
     const measurement_cnt_t            measurement_cnt,
-    const radio_mac_t                  radio_mac)
+    const radio_mac_t                  radio_mac,
+    const sensors_flags_t              flags)
 {
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-    const re_f0_data_t data_format_f0 = data_fmt_f0_init(
+    const re_6_data_t data_format_6 = data_fmt_6_init(
         p_measurement,
         (uint16_t)(measurement_cnt & 0xFFFFU),
-        radio_mac);
-    re_status_t enc_code = re_f0_encode(&g_mfg_data[2], &data_format_f0);
-    if (RE_SUCCESS != enc_code)
-    {
-        TLOG_ERR("re_6_encode failed (err %d)", enc_code);
-    }
-    LOG_HEXDUMP_INF(g_mfg_data, sizeof(g_mfg_data), "Sending advertising data:");
-    nfc_update_data(&g_mfg_data[2], sizeof(g_mfg_data) - 2);
-
-    memset(&g_mfg_data_ext[2], 0xFF, sizeof(g_mfg_data_ext) - 2);
-    const re_e0_data_t data_e0 = data_fmt_e0_init(p_measurement, (uint16_t)(measurement_cnt & 0xFFFFU), radio_mac);
-    enc_code                   = re_e0_encode(&g_mfg_data_ext[2], &data_e0);
-    if (RE_SUCCESS != enc_code)
-    {
-        TLOG_ERR("re_e0_encode failed (err %d)", enc_code);
-    }
-#else
-    const re_6_data_t data_format_6 = data_fmt_6_init(p_measurement, (uint16_t)(measurement_cnt & 0xFFFFU), radio_mac);
-    re_status_t       enc_code      = re_6_encode(&g_mfg_data[2], &data_format_6);
+        radio_mac,
+        (re_6_flags_t) {
+            .flag_calibration_in_progress = flags.flag_calibration_in_progress,
+            .flag_button_pressed          = flags.flag_button_pressed,
+            .flag_rtc_running_on_boot     = flags.flag_rtc_running_on_boot,
+        });
+    re_status_t enc_code = re_6_encode(&g_mfg_data[2], &data_format_6);
     if (RE_SUCCESS != enc_code)
     {
         TLOG_ERR("re_6_encode failed (err %d)", enc_code);
@@ -234,13 +219,20 @@ update_ble_adv_data(
     nfc_update_data(&g_mfg_data[2], sizeof(g_mfg_data) - 2);
 
     memset(&g_mfg_data_ext[2], 0xFF, sizeof(g_mfg_data_ext) - 2);
-    const re_e1_data_t data_e1 = data_fmt_e1_init(p_measurement, measurement_cnt, radio_mac);
-    enc_code                   = re_e1_encode(&g_mfg_data_ext[2], &data_e1);
+    const re_e1_data_t data_e1 = data_fmt_e1_init(
+        p_measurement,
+        measurement_cnt,
+        radio_mac,
+        (re_e1_flags_t) {
+            .flag_calibration_in_progress = flags.flag_calibration_in_progress,
+            .flag_button_pressed          = flags.flag_button_pressed,
+            .flag_rtc_running_on_boot     = flags.flag_rtc_running_on_boot,
+        });
+    enc_code = re_e1_encode(&g_mfg_data_ext[2], &data_e1);
     if (RE_SUCCESS != enc_code)
     {
         TLOG_ERR("re_e0_encode failed (err %d)", enc_code);
     }
-#endif
 #if !IS_ENABLED(CONFIG_RUUVI_AIR_ENABLE_BLE_LOGGING)
     LOG_HEXDUMP_INF(g_mfg_data_ext, sizeof(g_mfg_data_ext), "Sending extended advertising data:");
 #endif
@@ -253,15 +245,7 @@ update_ble_adv_data(
             ble_adv_info_t* const p_adv_info = &g_ble_adv_info[i];
             if ((NULL != p_adv_info->p_conn) && nus_is_notif_enabled())
             {
-                const int res = bt_nus_send(
-                    p_adv_info->p_conn,
-                    &g_mfg_data_ext[2],
-#if defined(RUUVI_DATA_FORMAT_E0_F0)
-                    RE_E0_OFFSET_ADDR_MSB
-#else
-                    RE_E1_OFFSET_ADDR_MSB
-#endif
-                );
+                const int res = bt_nus_send(p_adv_info->p_conn, &g_mfg_data_ext[2], RE_E1_OFFSET_ADDR_MSB);
                 if (0 != res)
                 {
                     TLOG_ERR("nus_send_data failed, err %d", res);
@@ -454,7 +438,7 @@ ble_adv_recreate(ble_adv_info_t* const p_info, const bool flag_connectable)
 static void
 advertise(struct k_work* work)
 {
-    update_ble_adv_data(&g_measurement, g_measurement_cnt, g_ble_mac);
+    update_ble_adv_data(&g_measurement, g_measurement_cnt, g_ble_mac, g_ble_adv_flags);
 
     bool flag_connection_established = false;
     for (int i = 0; i < BLE_ADV_TYPE_NUM; i++)
@@ -585,10 +569,14 @@ ble_adv_get_mac(void)
 }
 
 void
-ble_adv_restart(const sensors_measurement_t* const p_measurement, const measurement_cnt_t measurement_cnt)
+ble_adv_restart(
+    const sensors_measurement_t* const p_measurement,
+    const measurement_cnt_t            measurement_cnt,
+    const sensors_flags_t              flags)
 {
     g_measurement     = *p_measurement;
     g_measurement_cnt = measurement_cnt;
+    g_ble_adv_flags   = flags;
 #if USE_BLE
     k_work_submit(&g_advertise_work);
 #endif

@@ -13,102 +13,129 @@
 #include <../../../../drivers/lp5810/include/lp5810.h>
 
 / {
-    gpio_enable_sensors: gpio_enable_sensors {
-        compatible = "power-switch";
-        status = "okay";
-        gpios = <&gpio0 8 (GPIO_ACTIVE_HIGH)>;
-    };
+	gpio_enable_sensors: gpio_enable_sensors {
+		compatible = "power-switch";
+		status = "okay";
+		gpios = <&gpio0 8 (GPIO_ACTIVE_HIGH)>;
+	};
 };
 
 &gpio0 {
 	status = "okay";
 	gpio-reserved-ranges = <0 2>, <4 2>, <9 2>, <11 2>, <13 2>, <18 7>;
 	gpio-line-names =
-                "XL1",             // GPIO 0
-                "XL2",             // GPIO 1
-                "RC_PIN3",         // GPIO 2
-                "RC_PIN2",         // GPIO 3
-                "MIC_PDM",         // GPIO 4
-                "MIC_CLK",         // GPIO 5
-                "",                // GPIO 6
-                "BUTTON_PINHOLE",  // GPIO 7
-                "ENABLE_SENSORS",  // GPIO 8
-                "NFC1",            // GPIO 9
-                "NFC2",            // GPIO 10
-                "UART0_TX",        // GPIO 11
-                "UART0_RX",        // GPIO 12
-                "I2C_SCL",         // GPIO 13
-                "I2C_SDA",         // GPIO 14
-                "",                // GPIO 15
-                "",                // GPIO 16
-                "RTC_INT",         // GPIO 17
-                "RESET",           // GPIO 18
-                "QSPI CS",         // GPIO 19
-                "QSPI DIO1",       // GPIO 20
-                "QSPI DIO2",       // GPIO 21
-                "QSPI DIO0",       // GPIO 22
-                "QSPI CLK",        // GPIO 23
-                "QSPI_DIO3",       // GPIO 24
-                "",                // GPIO 25
-                "",                // GPIO 26
-                "",                // GPIO 27
-                "RC_PIN4",         // GPIO 28
-                "RC_PIN5",         // GPIO 29
-                "RC_PIN6",         // GPIO 30
-                "RC_PIN7";         // GPIO 31
+		"XL1",             // GPIO 0 *
+		"XL2",             // GPIO 1 *
+		"RC_PIN3",         // GPIO 2
+		"RC_PIN2",         // GPIO 3
+		"MIC_PDM",         // GPIO 4 *
+		"MIC_CLK",         // GPIO 5 *
+		"",                // GPIO 6
+		"BUTTON_PINHOLE",  // GPIO 7
+		"ENABLE_SENSORS",  // GPIO 8
+		"NFC1",            // GPIO 9 *
+		"NFC2",            // GPIO 10 *
+		"UART0_TX",        // GPIO 11 *
+		"UART0_RX",        // GPIO 12 *
+		"I2C_SCL",         // GPIO 13 *
+		"I2C_SDA",         // GPIO 14 *
+		"",                // GPIO 15
+		"",                // GPIO 16
+		"RTC_INT",         // GPIO 17
+		"RESET",           // GPIO 18 *
+		"QSPI CS",         // GPIO 19 *
+		"QSPI DIO1",       // GPIO 20 *
+		"QSPI DIO2",       // GPIO 21 *
+		"QSPI DIO0",       // GPIO 22 *
+		"QSPI CLK",        // GPIO 23 *
+		"QSPI_DIO3",       // GPIO 24 *
+		"",                // GPIO 25
+		"",                // GPIO 26
+		"",                // GPIO 27
+		"RC_PIN4",         // GPIO 28
+		"RC_PIN5",         // GPIO 29
+		"RC_PIN6",         // GPIO 30
+		"RC_PIN7";         // GPIO 31
+};
+
+&gpio1 {
+	status = "okay";
+	gpio-reserved-ranges = <0 1>;
+	gpio-line-names =
+		"SWO",					// GPIO 0 *
+		"",						// GPIO 1
+		"",						// GPIO 2
+		"",						// GPIO 3
+		"",						// GPIO 4
+		"",						// GPIO 5
+		"",						// GPIO 6
+		"",						// GPIO 7
+		"PINHOLE_LED_GREEN",	// GPIO 8
+		"PINHOLE_LED_RED",		// GPIO 9
+		"",						// GPIO 10
+		"",						// GPIO 11
+		"",						// GPIO 12
+		"",						// GPIO 13
+		"",						// GPIO 14
+		"";						// GPIO 15
 };
 
 &i2c0 {
-    status = "okay";
-    clock-frequency = <I2C_BITRATE_STANDARD>;
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
 
-    DPS310@77 {
-        status = "okay";
-        compatible = "infineon,dps310";
-        reg = <0x77>;
-    };
-    OPT4060@44 {
-        status = "okay";
-        compatible = "ti,opt4060";
-        reg = <0x44>;
-    };
+	DPS310@77 {
+		status = "okay";
+		compatible = "infineon,dps310";
+		reg = <0x77>;
+	};
+
+	OPT4060@44 {
+		status = "okay";
+		compatible = "ti,opt4060";
+		reg = <0x44>;
+	};
+
 	rtc_pcf85263a: pcf85263a@51 {
 		status = "okay";
-                inta-gpios = <&gpio0 17 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		inta-gpios = <&gpio0 17 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 		compatible = "nxp,pcf85263a";
 		reg = <0x51>;
 	};
-    LP5810@58 {
-        status = "okay";
-        compatible = "ti,lp5810";
-        reg = <0x58>;
-        // max_curr_opt; // Uncomment to set max current to 51 mA
-        lod_action_cur_out_shutdown; // Shut down current sink when LED open fault happens
-        // lsd_action_all_out_shutdown; // Shut down all OUTs when LED short fault happens.
-        lsd_threshold = <LP5810_LSD_THRESHOLD_065_VOUT>;
-        led_0 {
-            label = "LP5810 Red LED";
-            index = <0>;
-            color-mapping =
-                <LED_COLOR_ID_RED>;
-        };
-        led_1 {
-            label = "LP5810 Green LED";
-            index = <1>;
-            color-mapping =
-                <LED_COLOR_ID_GREEN>;
-        };
-        led_2 {
-            label = "LP5810 Blue LED";
-            index = <2>;
-            color-mapping =
-                <LED_COLOR_ID_BLUE>;
-        };
-    };
+
+	LP5810@58 {
+		status = "okay";
+		compatible = "ti,lp5810";
+		reg = <0x58>;
+		// max_curr_opt; // Uncomment to set max current to 51 mA
+		lod_action_cur_out_shutdown; // Shut down current sink when LED open fault happens
+		// lsd_action_all_out_shutdown; // Shut down all OUTs when LED short fault happens.
+		lsd_threshold = <LP5810_LSD_THRESHOLD_065_VOUT>;
+		led_0 {
+			label = "LP5810 Red LED";
+			index = <0>;
+			color-mapping =
+				<LED_COLOR_ID_RED>;
+		};
+
+		led_1 {
+			label = "LP5810 Green LED";
+			index = <1>;
+			color-mapping =
+				<LED_COLOR_ID_GREEN>;
+		};
+
+		led_2 {
+			label = "LP5810 Blue LED";
+			index = <2>;
+			color-mapping =
+				<LED_COLOR_ID_BLUE>;
+		};
+	};
 };
 
 / {
-    aliases {
-        rtc-0 = &rtc_pcf85263a;
-    };
+	aliases {
+		rtc-0 = &rtc_pcf85263a;
+	};
 };
