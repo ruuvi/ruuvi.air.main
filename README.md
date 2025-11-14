@@ -91,7 +91,7 @@ west zephyr-export
 ## Clone this repository
 ```bash
 cd ~/ncs/v2.8.0
-git clone --recurse-submodules --remote-submodules https://github.com/ruuvi/ruuvi.air.c.git
+git clone --recurse-submodules --remote-submodules https://github.com/ruuvi/ruuvi.air.main.git
 ```
 
 ## Run nRF toolchain shell

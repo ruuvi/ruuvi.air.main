@@ -4,11 +4,11 @@
 
  #include <zephyr/dt-bindings/led/led.h>
 
-/* This overlay file is used by the main ruuvi.air.c project, MCUboot and B0,
+/* This overlay file is used by the main ruuvi.air project, MCUboot and B0,
    so the path to lp5810.h must be relative to
-   "ruuvi.air.c/boards/ruuvi/ruuviair/dts"
+   "ruuvi.air/boards/ruuvi/ruuviair/dts"
    because only this directory is added to the include path for all 3 projects:
-   the main ruuvi.air.c project, MCUboot and B0.
+   the main ruuvi.air project, MCUboot and B0.
 */
 #include <../../../../drivers/lp5810/include/lp5810.h>
 

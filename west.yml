@@ -1,6 +1,6 @@
 manifest:
   self:
-    path: ruuvi.air.c
+    path: ruuvi.air
   remotes:
     - name: nrf
       url-base: https://github.com/nrfconnect

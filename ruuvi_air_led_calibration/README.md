@@ -27,7 +27,7 @@ To perform LED calibration, you need the following hardware:
    - Use firmware from `./firmware/fw_opt4060_measurements/`
 
 3. **BLE Bridge**: nRF52840-dongle or nRF52840-DK with
-   [ruuvi_ble_nus](https://github.com/ruuvi/ruuvi.air.c/tree/master/ruuvi_ble_nus) firmware.
+   [ruuvi_ble_nus](https://github.com/ruuvi/ruuvi.air.ble_nus) firmware.
 
 4. **Test Setup**:
    - Position the measurement device so its OPT4060 sensor is directly opposite
@@ -113,5 +113,5 @@ Manually copy the content from `stage_5_result.csv` to the `BRIGHTNESS_TO_CURREN
 
 ## Related Documentation
 
-- [ruuvi_ble_nus](https://github.com/ruuvi/ruuvi.air.c/tree/master/ruuvi_ble_nus) - BLE bridge firmware
+- [ruuvi_ble_nus](https://github.com/ruuvi/ruuvi.air.ble_nus) - BLE bridge firmware
 - Firmware files are located in `./firmware/` directory

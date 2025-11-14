@@ -9,7 +9,7 @@ list(PREPEND CMAKE_MODULE_PATH "${MOD_DIR}")
 list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/drivers)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(ruuvi.air.c)
+project(ruuvi.air)
 
 set_property(TARGET app_version_h PROPERTY APP_VERSION_CUSTOMIZATION
     "//#include;\\\"app_version_extra.h\\\";"
