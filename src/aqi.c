@@ -22,33 +22,9 @@ LOG_MODULE_REGISTER(AQI, LOG_LEVEL_INF);
 
 #define AQI_EMA_ALPHA (0.1f) /* 1.0f - expf(-1.0f / 10) ≈ 0.1 */
 
+#define AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT (25 * 10)
+
 #define AQI_LED_EXP_CURRENTS_DURATION_MS (1000)
-
-typedef enum air_quality_index_e
-{
-    AIR_QUALITY_INDEX_NONE = 0,
-    AIR_QUALITY_INDEX_EXCELLENT,
-    AIR_QUALITY_INDEX_GOOD,
-    AIR_QUALITY_INDEX_FAIR,
-    AIR_QUALITY_INDEX_POOR,
-    AIR_QUALITY_INDEX_VERY_POOR,
-} air_quality_index_e;
-
-typedef enum manual_brightness_level
-{
-    MANUAL_BRIGHTNESS_LEVEL_OFF = 0,
-    MANUAL_BRIGHTNESS_LEVEL_NIGHT,
-    MANUAL_BRIGHTNESS_LEVEL_DAY,
-    MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY,
-    MANUAL_BRIGHTNESS_LEVELS,
-} manual_brightness_level_e;
-
-static const rgb_led_color_t AQI_LED_COLOR_NONE      = { .red = 0, .green = 0, .blue = 0 };
-static const rgb_led_color_t AQI_LED_COLOR_EXCELLENT = { .red = 0, .green = 255, .blue = 90 };
-static const rgb_led_color_t AQI_LED_COLOR_GOOD      = { .red = 30, .green = 255, .blue = 0 };
-static const rgb_led_color_t AQI_LED_COLOR_MODERATE  = { .red = 240, .green = 255, .blue = 0 };
-static const rgb_led_color_t AQI_LED_COLOR_POOR      = { .red = 255, .green = 80, .blue = 0 };
-static const rgb_led_color_t AQI_LED_COLOR_UNHEALTHY = { .red = 255, .green = 0, .blue = 0 };
 
 static float g_aqi_luminosity_ema = 200.0f;
 
@@ -62,14 +38,108 @@ static int64_t             g_aqi_started_timestamp;
 static rgb_led_brightness_t g_aqi_led_auto_brightness_level   = AQI_LED_MAX_AUTO_BRIGHTNESS / 2;
 static uint8_t              g_aqi_led_auto_brightness_dim_pwm = 128;
 
-static const rgb_led_currents_t g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVELS] = {
-    [MANUAL_BRIGHTNESS_LEVEL_OFF]        = { .current_red = 12, .current_green = 2, .current_blue = 10 },
-    [MANUAL_BRIGHTNESS_LEVEL_NIGHT]      = { .current_red = 12, .current_green = 2, .current_blue = 10 },
-    [MANUAL_BRIGHTNESS_LEVEL_DAY]        = { .current_red = 35, .current_green = 6, .current_blue = 20 },
-    [MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY] = { .current_red = 150, .current_green = 70, .current_blue = 255 },
+static const rgb_led_color_t g_aqi_auto_led_colors_table[AIR_QUALITY_NUM_INDEXES] = {
+    [AIR_QUALITY_INDEX_NONE]      = { .red = 0, .green = 0, .blue = 0, },
+    [AIR_QUALITY_INDEX_EXCELLENT] = { .red = 0, .green = 255, .blue = 90, },
+    [AIR_QUALITY_INDEX_GOOD]      = { .red = 30, .green = 255, .blue = 0, },
+    [AIR_QUALITY_INDEX_FAIR]      = { .red = 240, .green = 255, .blue = 0, },
+    [AIR_QUALITY_INDEX_POOR]      = { .red = 255, .green = 80, .blue = 0, },
+    [AIR_QUALITY_INDEX_VERY_POOR] = { .red = 255, .green = 0, .blue = 0, },
+};
+
+static const manual_brightness_color_t g_aqi_manual_brightness_colors_table_init[MANUAL_BRIGHTNESS_LEVELS] = {
+    [MANUAL_BRIGHTNESS_LEVEL_OFF] = {
+        .currents = { .current_red = 12, .current_green = 2, .current_blue = 10 },
+        .colors   = {
+            [AIR_QUALITY_INDEX_NONE]      = { .red = 0, .green = 0, .blue = 0, },
+            [AIR_QUALITY_INDEX_EXCELLENT] = { .red = 0, .green = 0, .blue = 0, },
+            [AIR_QUALITY_INDEX_GOOD]      = { .red = 0, .green = 0, .blue = 0, },
+            [AIR_QUALITY_INDEX_FAIR]      = { .red = 0, .green = 0, .blue = 0, },
+            [AIR_QUALITY_INDEX_POOR]      = { .red = 0, .green = 0, .blue = 0, },
+            [AIR_QUALITY_INDEX_VERY_POOR] = { .red = 0, .green = 0, .blue = 0, },
+        },
+    },
+    [MANUAL_BRIGHTNESS_LEVEL_NIGHT] = {
+        .currents = { .current_red = 12, .current_green = 2, .current_blue = 10 },
+        .colors   = {
+            [AIR_QUALITY_INDEX_NONE]      = { .red = 0, .green = 0, .blue = 0 },
+            [AIR_QUALITY_INDEX_EXCELLENT] = { .red = 0, .green = 255, .blue = 90 },
+            [AIR_QUALITY_INDEX_GOOD]      = { .red = 30, .green = 255, .blue = 0 },
+            [AIR_QUALITY_INDEX_FAIR]      = { .red = 240, .green = 255, .blue = 0 },
+            [AIR_QUALITY_INDEX_POOR]      = { .red = 255, .green = 80, .blue = 0 },
+            [AIR_QUALITY_INDEX_VERY_POOR] = { .red = 255, .green = 0, .blue = 0 },
+        },
+    },
+    [MANUAL_BRIGHTNESS_LEVEL_DAY] = {
+        .currents = { .current_red = 35, .current_green = 6, .current_blue = 20 },
+        .colors   = {
+            [AIR_QUALITY_INDEX_NONE]      = { .red = 0, .green = 0, .blue = 0 },
+            [AIR_QUALITY_INDEX_EXCELLENT] = { .red = 0, .green = 255, .blue = 90 },
+            [AIR_QUALITY_INDEX_GOOD]      = { .red = 30, .green = 255, .blue = 0 },
+            [AIR_QUALITY_INDEX_FAIR]      = { .red = 240, .green = 255, .blue = 0 },
+            [AIR_QUALITY_INDEX_POOR]      = { .red = 255, .green = 80, .blue = 0 },
+            [AIR_QUALITY_INDEX_VERY_POOR] = { .red = 255, .green = 0, .blue = 0 },
+        },
+    },
+    [MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY] = {
+        .currents = { .current_red = 150, .current_green = 70, .current_blue = 255 },
+        .colors   = {
+            [AIR_QUALITY_INDEX_NONE]      = { .red = 0, .green = 0, .blue = 0 },
+            [AIR_QUALITY_INDEX_EXCELLENT] = { .red = 0, .green = 255, .blue = 90 },
+            [AIR_QUALITY_INDEX_GOOD]      = { .red = 30, .green = 255, .blue = 0 },
+            [AIR_QUALITY_INDEX_FAIR]      = { .red = 255, .green = 160, .blue = 0 },
+            [AIR_QUALITY_INDEX_POOR]      = { .red = 255, .green = 80, .blue = 0 },
+            [AIR_QUALITY_INDEX_VERY_POOR] = { .red = 255, .green = 0, .blue = 0 },
+        },
+    },
+};
+
+static manual_brightness_color_t g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVELS] = {
+    [MANUAL_BRIGHTNESS_LEVEL_OFF]   = g_aqi_manual_brightness_colors_table_init[MANUAL_BRIGHTNESS_LEVEL_OFF],
+    [MANUAL_BRIGHTNESS_LEVEL_NIGHT] = g_aqi_manual_brightness_colors_table_init[MANUAL_BRIGHTNESS_LEVEL_NIGHT],
+    [MANUAL_BRIGHTNESS_LEVEL_DAY]   = g_aqi_manual_brightness_colors_table_init[MANUAL_BRIGHTNESS_LEVEL_DAY],
+    [MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY]
+    = g_aqi_manual_brightness_colors_table_init[MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY],
 };
 
 static rgb_led_exp_current_coefs_t g_aqi_led_currents_alpha;
+
+const manual_brightness_color_t*
+aqi_get_colors_table(const manual_brightness_level_e level)
+{
+    if (level < MANUAL_BRIGHTNESS_LEVELS)
+    {
+        return &g_aqi_manual_brightness_colors_table[level];
+    }
+    return &g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_OFF];
+}
+
+void
+aqi_set_colors_table(const manual_brightness_level_e level, const manual_brightness_color_t* const p_table)
+{
+    if (level < MANUAL_BRIGHTNESS_LEVELS)
+    {
+        g_aqi_manual_brightness_colors_table[level] = *p_table;
+        if (MANUAL_BRIGHTNESS_LEVEL_NIGHT == level)
+        {
+            g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_OFF].currents = p_table->currents;
+        }
+    }
+}
+
+void
+aqi_reset_colors_table(const manual_brightness_level_e level)
+{
+    if (level < MANUAL_BRIGHTNESS_LEVELS)
+    {
+        g_aqi_manual_brightness_colors_table[level] = g_aqi_manual_brightness_colors_table_init[level];
+        if (MANUAL_BRIGHTNESS_LEVEL_NIGHT == level)
+        {
+            g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_OFF].currents
+                = g_aqi_manual_brightness_colors_table_init[MANUAL_BRIGHTNESS_LEVEL_NIGHT].currents;
+        }
+    }
+}
 
 static void
 aqi_init_exp_current_coef(
@@ -89,18 +159,18 @@ aqi_init(void)
 {
     aqi_init_exp_current_coef(
         &g_aqi_led_currents_alpha.coef_red,
-        g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_NIGHT].current_red,
-        g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY].current_red,
+        g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_NIGHT].currents.current_red,
+        g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY].currents.current_red,
         AQI_LED_EXP_CURRENTS_DURATION_MS);
     aqi_init_exp_current_coef(
         &g_aqi_led_currents_alpha.coef_green,
-        g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_NIGHT].current_green,
-        g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY].current_green,
+        g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_NIGHT].currents.current_green,
+        g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY].currents.current_green,
         AQI_LED_EXP_CURRENTS_DURATION_MS);
     aqi_init_exp_current_coef(
         &g_aqi_led_currents_alpha.coef_blue,
-        g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_NIGHT].current_blue,
-        g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY].current_blue,
+        g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_NIGHT].currents.current_blue,
+        g_aqi_manual_brightness_colors_table[MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY].currents.current_blue,
         AQI_LED_EXP_CURRENTS_DURATION_MS);
 }
 
@@ -139,28 +209,6 @@ aqi_calculate_index(const float air_quality_index)
     }
 }
 
-static const rgb_led_color_t*
-aqi_get_led_color(const air_quality_index_e aqi)
-{
-    switch (aqi)
-    {
-        case AIR_QUALITY_INDEX_NONE:
-            return &AQI_LED_COLOR_NONE;
-        case AIR_QUALITY_INDEX_EXCELLENT:
-            return &AQI_LED_COLOR_EXCELLENT;
-        case AIR_QUALITY_INDEX_GOOD:
-            return &AQI_LED_COLOR_GOOD;
-        case AIR_QUALITY_INDEX_FAIR:
-            return &AQI_LED_COLOR_MODERATE;
-        case AIR_QUALITY_INDEX_POOR:
-            return &AQI_LED_COLOR_POOR;
-        case AIR_QUALITY_INDEX_VERY_POOR:
-            return &AQI_LED_COLOR_UNHEALTHY;
-        default:
-            return NULL;
-    }
-}
-
 void
 aqi_recalc_auto_brightness_level(const float luminosity)
 {
@@ -194,15 +242,17 @@ aqi_recalc_auto_brightness_level(const float luminosity)
 }
 
 static void
-aqi_update_led_auto(const rgb_led_color_t* const p_led_color)
+aqi_update_led_auto(const air_quality_index_e aqi_idx)
 {
+    const rgb_led_color_t* const p_led_color = &g_aqi_auto_led_colors_table[aqi_idx];
+
     const rgb_led_color_t led_color = {
         .red   = (uint8_t)(((uint32_t)p_led_color->red * g_aqi_led_auto_brightness_dim_pwm) / 255U),
         .green = (uint8_t)(((uint32_t)p_led_color->green * g_aqi_led_auto_brightness_dim_pwm) / 255U),
         .blue  = (uint8_t)(((uint32_t)p_led_color->blue * g_aqi_led_auto_brightness_dim_pwm) / 255U),
     };
 
-    LOG_WRN(
+    LOG_INF(
         "AQI=%d, %.3f, brightness: %d, dim: %d, set colors: <%d, %d, %d> -> <%d, "
         "%d, %d>",
         g_aqi_led,
@@ -220,15 +270,74 @@ aqi_update_led_auto(const rgb_led_color_t* const p_led_color)
 }
 
 static void
-aqi_update_led_manual(const rgb_led_color_t* const p_led_color, const rgb_led_currents_t* const p_led_currents)
+aqi_update_led_manual_percentage(
+    const app_settings_led_brightness_deci_percent_t brightness_deci_percent,
+    const air_quality_index_e                        aqi_idx)
 {
+    const rgb_led_color_t* const p_led_color = &g_aqi_auto_led_colors_table[aqi_idx];
+
+    const uint8_t led_brightness_min   = APP_SETTINGS_LED_BRIGHTNESS_NIGHT_VALUE;
+    const uint8_t led_brightness_max   = 255U;
+    const uint8_t led_brightness_range = (uint8_t)(led_brightness_max - led_brightness_min);
+
+    rgb_led_brightness_t led_brightness = 0;
+    uint8_t              dim_pwm        = 0;
+
+    if (brightness_deci_percent < AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT)
+    {
+        led_brightness = led_brightness_min;
+        dim_pwm = (uint8_t)((255 * brightness_deci_percent + (AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT / 2))
+                            / AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT);
+    }
+    else
+    {
+        const uint32_t brightness_min_deci_percent   = AQI_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT;
+        const uint32_t brightness_max_deci_percent   = 100 * 10;
+        const uint32_t brightness_range_deci_percent = brightness_max_deci_percent - brightness_min_deci_percent;
+
+        led_brightness = (rgb_led_brightness_t)(((brightness_deci_percent - brightness_min_deci_percent)
+                                                     * led_brightness_range
+                                                 + (brightness_range_deci_percent / 2))
+                                                    / brightness_range_deci_percent
+                                                + led_brightness_min);
+        dim_pwm        = 255;
+    }
+
+    const rgb_led_color_t led_color = {
+        .red   = (uint8_t)(((uint32_t)p_led_color->red * dim_pwm) / 255U),
+        .green = (uint8_t)(((uint32_t)p_led_color->green * dim_pwm) / 255U),
+        .blue  = (uint8_t)(((uint32_t)p_led_color->blue * dim_pwm) / 255U),
+    };
+
+    LOG_INF(
+        "AQI=%d, brightness: %u.%01u%%, dim: %d, set colors: <%d, %d, %d> -> <%d, %d, %d>",
+        g_aqi_led,
+        brightness_deci_percent / 10,
+        brightness_deci_percent % 10,
+        dim_pwm,
+        p_led_color->red,
+        p_led_color->green,
+        p_led_color->blue,
+        led_color.red,
+        led_color.green,
+        led_color.blue);
+
+    opt_rgb_ctrl_set_next_brightnes_and_color(led_brightness, &led_color);
+}
+
+static void
+aqi_update_led_manual(const manual_brightness_level_e brightness_level, const air_quality_index_e aqi_idx)
+{
+    const manual_brightness_color_t* const p_info      = &g_aqi_manual_brightness_colors_table[brightness_level];
+    const rgb_led_color_t* const           p_led_color = &p_info->colors[aqi_idx];
+
     const rgb_led_pwms_t led_pwm = {
         .pwm_red   = p_led_color->red,
         .pwm_green = p_led_color->green,
         .pwm_blue  = p_led_color->blue,
     };
 
-    opt_rgb_ctrl_set_next_raw_currents_and_pwms(p_led_currents, &led_pwm);
+    opt_rgb_ctrl_set_next_raw_currents_and_pwms(&p_info->currents, &led_pwm);
 }
 
 void
@@ -270,13 +379,6 @@ aqi_refresh_led(void)
         }
     }
 
-    const rgb_led_color_t* const p_led_color = aqi_get_led_color(g_aqi_led);
-    if (NULL == p_led_color)
-    {
-        LOG_ERR("Invalid AQI LED color for index %d", g_aqi_led);
-        return;
-    }
-
     const enum app_settings_led_mode led_mode = app_settings_get_led_mode();
     switch (led_mode)
     {
@@ -285,24 +387,24 @@ aqi_refresh_led(void)
             break;
 
         case APP_SETTINGS_LED_MODE_MANUAL_BRIGHT_DAY:
-            aqi_update_led_manual(
-                p_led_color,
-                &g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY]);
+            aqi_update_led_manual(MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY, g_aqi_led);
             break;
         case APP_SETTINGS_LED_MODE_MANUAL_DAY:
-            aqi_update_led_manual(p_led_color, &g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_DAY]);
+            aqi_update_led_manual(MANUAL_BRIGHTNESS_LEVEL_DAY, g_aqi_led);
             break;
         case APP_SETTINGS_LED_MODE_MANUAL_NIGHT:
-            aqi_update_led_manual(p_led_color, &g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_NIGHT]);
+            aqi_update_led_manual(MANUAL_BRIGHTNESS_LEVEL_NIGHT, g_aqi_led);
             break;
         case APP_SETTINGS_LED_MODE_MANUAL_OFF:
-            aqi_update_led_manual(
-                &AQI_LED_COLOR_NONE,
-                &g_aqi_led_manual_brightness_currents[MANUAL_BRIGHTNESS_LEVEL_OFF]);
+            aqi_update_led_manual(MANUAL_BRIGHTNESS_LEVEL_OFF, g_aqi_led);
+            break;
+
+        case APP_SETTINGS_LED_MODE_MANUAL_PERCENTAGE:
+            aqi_update_led_manual_percentage(app_settings_get_led_brightness_deci_percent(), g_aqi_led);
             break;
 
         case APP_SETTINGS_LED_MODE_AUTO:
-            aqi_update_led_auto(p_led_color);
+            aqi_update_led_auto(g_aqi_led);
             break;
     }
     if (flag_stop_bootup_fading)

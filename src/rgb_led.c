@@ -54,8 +54,9 @@ rgb_led_conv_rgb_with_brightness_to_currents_and_pwms(
     rgb_led_currents_t* const                    p_currents,
     rgb_led_pwms_t* const                        p_pwms)
 {
-    const rgb_led_brightness_idx_t brightness_idx = ((uint32_t)p_color->brightness * LED_CALIBRATION_BRIGHTNESS_STEPS
-                                                     + (LED_CALIBRATION_BRIGHTNESS_STEPS / 2))
+    const rgb_led_brightness_idx_t brightness_idx = ((uint32_t)p_color->brightness
+                                                         * (LED_CALIBRATION_BRIGHTNESS_STEPS - 1)
+                                                     + ((LED_CALIBRATION_BRIGHTNESS_STEPS - 1) / 2))
                                                     / LED_RGB_MAX_BRIGHTNESS;
     p_currents->current_red   = g_led_calibration_brightness_to_current_red[brightness_idx];
     p_currents->current_green = g_led_calibration_brightness_to_current_green[brightness_idx];
@@ -77,6 +78,16 @@ rgb_led_is_lp5810_ready(void)
     return device_is_ready(dev_lp5810);
 #else
     return false;
+#endif // DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
+}
+
+const char*
+rgb_led_get_dev_name(void)
+{
+#if DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
+    return dev_lp5810->name;
+#else
+    return "none";
 #endif // DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
 }
 

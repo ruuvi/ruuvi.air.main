@@ -1,4 +1,9 @@
 
 # Select the LFCLK source.
+
 # Use the internal high-frequency oscillator (HFXO) to generate a synthesized 32.768 kHz clock.
-CONFIG_CLOCK_CONTROL_NRF_K32SRC_SYNTH=y
+# CONFIG_CLOCK_CONTROL_NRF_K32SRC_SYNTH=y
+
+# Use the external 32.768 kHz crystal oscillator for LFCLK.
+CONFIG_CLOCK_CONTROL_NRF_K32SRC_EXT_FULL_SWING=y
+CONFIG_CLOCK_CONTROL_NRF_K32SRC_20PPM=y

@@ -676,6 +676,10 @@ calc_intermediate_current_value(
     const int32_t                           duration_ticks,
     const rgb_led_exp_current_coef_t* const p_coef)
 {
+    if (val_begin < p_coef->current_min)
+    {
+        return p_coef->current_min;
+    }
     if (0 == duration_ticks)
     {
         return val_begin;
@@ -929,7 +933,7 @@ opt_rgb_ctrl_thread(void* p1, void* p2, void* p3)
     g_opt4060_one_measurement_duration_ticks = opt4060_get_one_measurement_duration_ticks(dev_opt4060);
 #endif
 
-    if (APP_SETTINGS_LED_MODE_AUTO != app_settings_get_led_mode())
+    if (!app_settings_is_led_mode_auto())
     {
 #if USE_SENSOR_OPT4060
         if (opt_rgb_ctrl_is_opt4060_ready())
@@ -970,7 +974,7 @@ opt_rgb_ctrl_thread(void* p1, void* p2, void* p3)
         }
         if (0 != (events & OPT_RGB_CTRL_EVENT_TYPE_MEASURE_LUMINOSITY))
         {
-            if (APP_SETTINGS_LED_MODE_AUTO == app_settings_get_led_mode())
+            if (app_settings_is_led_mode_auto())
             {
                 TLOG_DBG("Measuring luminosity in auto mode");
                 opt_rgb_ctrl_do_measure_luminosity_in_auto_mode();
@@ -1305,7 +1309,7 @@ average_without_outliers(
 float
 opt_rgb_ctrl_get_luminosity(void)
 {
-    if (APP_SETTINGS_LED_MODE_AUTO == app_settings_get_led_mode())
+    if (app_settings_is_led_mode_auto())
     {
         if (OPT_RGB_CTRL_DBG_LOG_ENABLED)
         {

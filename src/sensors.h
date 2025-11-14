@@ -6,6 +6,7 @@
 #define SENSORS_H
 
 #include <stdbool.h>
+#include <time.h>
 #include "sen66_wrap.h"
 
 #ifdef __cplusplus
@@ -37,13 +38,18 @@ bool
 sensors_init(void);
 
 sensors_poll_result_t
-sensors_poll(void);
+sensors_poll(const time_t cur_unix_time);
 
 sensors_measurement_t
 sensors_get_measurement(void);
 
 void
 sensors_reinit(void);
+
+void
+sensors_get_from_cache_sen66_voc_algorithm_state(
+    uint32_t* const                    p_cur_unix_time32,
+    sen66_voc_algorithm_state_t* const p_voc_alg_state);
 
 #ifdef __cplusplus
 }

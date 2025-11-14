@@ -70,7 +70,7 @@ def load_rows(fin):
     return rows
 
 
-def find_red_calibration_point(rows, r_threshold=300.0):
+def find_red_calibration_point(rows, r_threshold=50.0):
     """
     Find the first row where R_R > threshold to use as calibration point.
     Returns (index, ratios) where ratios = (r_r/current, r_g/current, r_b/current, r_l/current)
@@ -162,7 +162,7 @@ def main():
     ap.add_argument("input",
                     help="Input CSV file with columns: Current,R_R,R_G,R_B,R_L,G_R,G_G,G_B,G_L,B_R,B_G,B_B,B_L")
     ap.add_argument("output", help="Output CSV file (same format as input)")
-    ap.add_argument("--r-threshold", type=float, default=300.0,
+    ap.add_argument("--r-threshold", type=float, default=50.0,
                     help="R_R threshold for finding calibration point. Default: 300.0")
     args = ap.parse_args()
 

@@ -154,11 +154,18 @@ bt_ctlr_assert_handle(char* file, uint32_t line)
 #endif
 
 static void
-log_time_info(const char* const p_prefix, const struct tm* const p_tm_time, const time_t clock_unix_time)
+log_time_info(
+    const char* const      p_prefix,
+    const struct tm* const p_tm_time,
+    const time_t           clock_unix_time,
+    const struct timespec  ts)
 {
-    const time_t rtc_unix_time = timeutil_timegm(p_tm_time);
+#if IS_ENABLED(CONFIG_RUUVI_AIR_LOG_TIME)
+    const time_t  rtc_unix_time = timeutil_timegm(p_tm_time);
+    const int64_t uptime_ticks  = k_uptime_ticks();
     LOG_INF(
-        "%s: %04d-%02d-%02d %02d:%02d:%02d, unix_time=%" PRIu32 ", clock=%" PRIu32,
+        "%s: %04d-%02d-%02d %02d:%02d:%02d, unix_time=%" PRIu32 ", clock=%" PRIu32 ".%09" PRIu32 ", uptime: %" PRIu64
+        " ticks (%" PRIu64 " ms)",
         p_prefix,
         p_tm_time->tm_year + TIME_UTILS_BASE_YEAR,
         p_tm_time->tm_mon + 1,
@@ -167,7 +174,18 @@ log_time_info(const char* const p_prefix, const struct tm* const p_tm_time, cons
         p_tm_time->tm_min,
         p_tm_time->tm_sec,
         (uint32_t)rtc_unix_time,
-        (uint32_t)clock_unix_time);
+        (uint32_t)ts.tv_sec,
+        (uint32_t)ts.tv_nsec,
+        (uint64_t)uptime_ticks,
+        (uint64_t)k_ticks_to_ms_near64(uptime_ticks));
+    if (clock_unix_time != ts.tv_sec)
+    {
+        LOG_WRN(
+            "Clock time and CLOCK_REALTIME differ: %" PRIu32 " != %" PRIu32,
+            (uint32_t)clock_unix_time,
+            (uint32_t)ts.tv_sec);
+    }
+#endif
 }
 
 static bool
@@ -235,9 +253,27 @@ poll_sensors(void)
 {
     static measurement_cnt_t measurement_cnt = 0;
 
+    struct tm       tm_time_rtc   = { 0 };
+    const time_t    cur_unix_time = time(NULL);
+    struct timespec ts            = { 0 };
+    clock_gettime(CLOCK_REALTIME, &ts);
+    if (!app_rtc_get_time(&tm_time_rtc))
+    {
+        struct tm tm_cur_time = { 0 };
+        gmtime_r(&cur_unix_time, &tm_cur_time);
+#if IS_ENABLED(CONFIG_RTC) && (!RUUVI_MOCK_MEASUREMENTS) && IS_ENABLED(CONFIG_RUUVI_AIR_LOG_TIME)
+        LOG_ERR("Failed to get RTC time");
+#endif
+        log_time_info("System time", &tm_cur_time, cur_unix_time, ts);
+    }
+    else
+    {
+        log_time_info("RTC time", &tm_time_rtc, cur_unix_time, ts);
+    }
+
     app_led_green_set_if_button_is_not_pressed(true);
 
-    const sensors_poll_result_t poll_res = sensors_poll();
+    const sensors_poll_result_t poll_res = sensors_poll(cur_unix_time);
 
     app_led_green_set_if_button_is_not_pressed(false);
 
@@ -304,26 +340,6 @@ poll_sensors(void)
         sensors_reinit();
     }
 #endif
-
-#if IS_ENABLED(CONFIG_RUUVI_AIR_LOG_TIME)
-    {
-        struct tm tm_time_rtc = { 0 };
-        if (!app_rtc_get_time(&tm_time_rtc))
-        {
-            const time_t cur_unix_time = time(NULL);
-            struct tm    tm_cur_time   = { 0 };
-            gmtime_r(&cur_unix_time, &tm_cur_time);
-#if IS_ENABLED(CONFIG_RTC) && (!RUUVI_MOCK_MEASUREMENTS)
-            LOG_ERR("Failed to get RTC time");
-#endif
-            log_time_info("System time", &tm_cur_time, cur_unix_time);
-        }
-        else
-        {
-            log_time_info("RTC time", &tm_time_rtc, time(NULL));
-        }
-    }
-#endif
 }
 
 static void
@@ -373,6 +389,31 @@ log_reset_cause(void)
     }
 }
 
+static void
+log_clocks(void)
+{
+    uint32_t lfstat   = NRF_CLOCK->LFCLKSTAT;
+    uint32_t lfclksrc = NRF_CLOCK->LFCLKSRC;
+    uint32_t hfstat   = NRF_CLOCK->HFCLKSTAT;
+
+    /* LFCLK source: bits [1:0]: 0=RC, 1=XTAL, 2=Synth, 3=External (nRF52) */
+    uint32_t lf_src      = lfstat & CLOCK_LFCLKSTAT_SRC_Msk;
+    bool     lf_running  = lfstat & CLOCK_LFCLKSTAT_STATE_Msk;
+    bool     lf_bypass   = (lfclksrc & CLOCK_LFCLKSRC_BYPASS_Msk) != 0;
+    bool     lf_external = (lfclksrc & CLOCK_LFCLKSRC_EXTERNAL_Msk) != 0;
+
+    bool hf_running = hfstat & CLOCK_HFCLKSTAT_STATE_Msk;
+    bool hf_is_xtal = hfstat & CLOCK_HFCLKSTAT_SRC_Msk; /* 1 = HFXO, 0 = HFINT */
+
+    LOG_INF(
+        "LFCLK running=%d src=%u (0=RC,1=XTAL,2=SYNTH) BYPASS=%d EXTERNAL=%d",
+        (int)lf_running,
+        (unsigned)lf_src,
+        (int)lf_bypass,
+        (int)lf_external);
+    LOG_INF("HFCLK running=%d src=%s", (int)hf_running, hf_is_xtal ? "HFXO" : "HFRC");
+}
+
 int
 main(void)
 {
@@ -408,6 +449,7 @@ main(void)
         STRINGIFY(BUILD_VERSION),
         ZEPHYR_COMMIT_STRING);
     log_reset_cause();
+    log_clocks();
 
     if (bootmode_check(BOOT_MODE_TYPE_FACTORY_RESET))
     {
@@ -425,12 +467,12 @@ main(void)
 
     const bool is_rtc_valid = check_rtc_clock();
 
-    (void)mount_fs();
-
     if (!app_settings_init())
     {
         LOG_ERR("app_settings_init failed");
     }
+
+    (void)mount_fs();
 
     if (!hist_log_init(is_rtc_valid))
     {

@@ -11,6 +11,7 @@
 #include "sen66_wrap.h"
 #include "mic_pdm.h"
 #include "opt_rgb_ctrl.h"
+#include "app_settings.h"
 
 LOG_MODULE_REGISTER(sensors, LOG_LEVEL_INF);
 
@@ -81,7 +82,31 @@ const struct device* const dev_dps310 = DEVICE_DT_GET_ONE(infineon_dps310);
 
 #if USE_SENSOR_SEN66
 
-static uint32_t g_sensors_poll_not_ready_cnt = 0;
+static uint32_t                                 g_sensors_poll_not_ready_cnt;
+static app_settings_sen66_voc_algorithm_state_t g_voc_alg_state;
+static K_MUTEX_DEFINE(g_voc_alg_state_mutex);
+
+static void
+sensors_save_to_cache_sen66_voc_algorithm_state(
+    const uint32_t                           cur_unix_time32,
+    const sen66_voc_algorithm_state_t* const p_voc_alg_state)
+{
+    k_mutex_lock(&g_voc_alg_state_mutex, K_FOREVER);
+    g_voc_alg_state.unix_timestamp = cur_unix_time32;
+    g_voc_alg_state.state          = *p_voc_alg_state;
+    k_mutex_unlock(&g_voc_alg_state_mutex);
+}
+
+void
+sensors_get_from_cache_sen66_voc_algorithm_state(
+    uint32_t* const                    p_cur_unix_time32,
+    sen66_voc_algorithm_state_t* const p_voc_alg_state)
+{
+    k_mutex_lock(&g_voc_alg_state_mutex, K_FOREVER);
+    *p_cur_unix_time32 = g_voc_alg_state.unix_timestamp;
+    *p_voc_alg_state   = g_voc_alg_state.state;
+    k_mutex_unlock(&g_voc_alg_state_mutex);
+}
 
 static sen66_wrap_measurement_t
 init_sen66_invalid_measurement(void)
@@ -101,15 +126,8 @@ init_sen66_invalid_measurement(void)
 }
 
 static void
-sensors_reinit_sen66(void)
+sensors_reinit_sen66_temperature_offset(void)
 {
-    LOG_INF("Reinitialize SEN66");
-    if (!sen66_wrap_device_reset())
-    {
-        LOG_ERR("%s failed", "sen66_wrap_device_reset");
-        k_msleep(1000);
-        return;
-    }
     const int16_t  offset        = -600; // -1.5C (-600 / 400 = -1.5, it seems that the value 200 in docs is incorrect)
     const int16_t  slope         = 0;    // 0 / 10000 = 0.0
     const uint16_t time_constant = 0;
@@ -118,16 +136,17 @@ sensors_reinit_sen66(void)
     if (!sen66_wrap_set_temperature_offset(offset, slope, time_constant, slot))
     {
         LOG_ERR("%s failed", "sen66_wrap_set_temperature_offset");
-        k_msleep(1000);
-        return;
     }
+}
 
+static void
+sensors_reinit_sen66_voc_alg_tuning_params(void)
+{
     LOG_INF("SEN66: Read VOC algorithm tuning parameters:");
     voc_algorithm_tuning_parameters_t voc_alg_tuning_params = { 0 };
     if (!sen66_wrap_get_voc_algorithm_tuning_parameters(&voc_alg_tuning_params))
     {
         LOG_ERR("%s failed", "sen66_wrap_get_voc_algorithm_tuning_parameters");
-        k_msleep(1000);
         return;
     }
     LOG_INF("- index_offset                : %d", (int)voc_alg_tuning_params.index_offset);
@@ -145,13 +164,99 @@ sensors_reinit_sen66(void)
     LOG_INF("SEN66: Set VOC algorithm tuning parameters:");
     LOG_INF("- learning_time_offset_hours  : %d", (int)voc_alg_tuning_params.learning_time_offset_hours);
     LOG_INF("- learning_time_gain_hours    : %d", (int)voc_alg_tuning_params.learning_time_gain_hours);
-
     if (!sen66_wrap_set_voc_algorithm_tuning_parameters(&voc_alg_tuning_params))
     {
         LOG_ERR("%s failed", "sen66_wrap_set_voc_algorithm_tuning_parameters");
+        return;
+    }
+}
+
+static void
+sensors_reinit_sen66_voc_alg_state(void)
+{
+    sen66_voc_algorithm_state_t voc_alg_state = (sen66_voc_algorithm_state_t) {
+        .voc_state = APP_SETTINGS_SEN66_VOC_ALGORITHM_STATE_DEFAULT,
+    };
+    if (!sen66_wrap_get_voc_algorithm_state(&voc_alg_state))
+    {
+        LOG_ERR("%s failed", "sen66_wrap_get_voc_algorithm_state");
+    }
+    else
+    {
+        LOG_INF(
+            "SEN66: Initial VOC algorithm state: %u, %u, %u, %u",
+            voc_alg_state.voc_state[0],
+            voc_alg_state.voc_state[1],
+            voc_alg_state.voc_state[2],
+            voc_alg_state.voc_state[3]);
+    }
+    const app_settings_sen66_voc_algorithm_state_t settings_voc_alg_state
+        = app_settings_get_sen66_voc_algorithm_state();
+    LOG_INF(
+        "SEN66: Loaded VOC algorithm state from settings: timestamp=%u, state: %u, %u, %u, %u",
+        settings_voc_alg_state.unix_timestamp,
+        settings_voc_alg_state.state.voc_state[0],
+        settings_voc_alg_state.state.voc_state[1],
+        settings_voc_alg_state.state.voc_state[2],
+        settings_voc_alg_state.state.voc_state[3]);
+    const time_t  cur_unix_time = time(NULL);
+    const int32_t delta_time    = (int32_t)(cur_unix_time - settings_voc_alg_state.unix_timestamp);
+    LOG_INF(
+        "SEN66: Current unix time: %u, last saved VOC algorithm state timestamp: %u, delta: %d sec",
+        (unsigned)cur_unix_time,
+        (unsigned)settings_voc_alg_state.unix_timestamp,
+        (int)delta_time);
+    // Restore last saved VOC algorithm state if it is not too old
+    // After factory reset the time will be reset, so delta_time will be negative
+    if ((delta_time > 0) && (delta_time < CONFIG_RUUVI_AIR_SEN66_VOC_ALG_STATE_RECOVERY_TIMEOUT))
+    {
+        sensors_save_to_cache_sen66_voc_algorithm_state(
+            settings_voc_alg_state.unix_timestamp,
+            &settings_voc_alg_state.state);
+        if (0 != memcmp(&voc_alg_state, &settings_voc_alg_state.state, sizeof(voc_alg_state)))
+        {
+            LOG_INF(
+                "SEN66: Restore last saved VOC algorithm state: %u, %u, %u, %u",
+                settings_voc_alg_state.state.voc_state[0],
+                settings_voc_alg_state.state.voc_state[1],
+                settings_voc_alg_state.state.voc_state[2],
+                settings_voc_alg_state.state.voc_state[3]);
+            if (!sen66_wrap_set_voc_algorithm_state(&settings_voc_alg_state.state))
+            {
+                LOG_ERR("%s failed", "sen66_wrap_set_voc_algorithm_state");
+            }
+        }
+        else
+        {
+            LOG_INF("SEN66: Current VOC algorithm state matches the saved one, no need to restore");
+        }
+    }
+    else
+    {
+        LOG_INF(
+            "SEN66: Not restoring VOC algorithm state, saved timestamp=%u, current time=%u, delta=%d sec is out of "
+            "range (0..%d)",
+            (unsigned)settings_voc_alg_state.unix_timestamp,
+            (unsigned)cur_unix_time,
+            (int)delta_time,
+            CONFIG_RUUVI_AIR_SEN66_VOC_ALG_STATE_RECOVERY_TIMEOUT);
+        sensors_save_to_cache_sen66_voc_algorithm_state((uint32_t)cur_unix_time, &voc_alg_state);
+    }
+}
+
+static void
+sensors_reinit_sen66(void)
+{
+    LOG_INF("Reinitialize SEN66");
+    if (!sen66_wrap_device_reset())
+    {
+        LOG_ERR("%s failed", "sen66_wrap_device_reset");
         k_msleep(1000);
         return;
     }
+    sensors_reinit_sen66_temperature_offset();
+    sensors_reinit_sen66_voc_alg_tuning_params();
+    sensors_reinit_sen66_voc_alg_state();
 
     LOG_INF("SEN66: Start continuous measurement");
     if (!sen66_wrap_start_continuous_measurement())
@@ -299,12 +404,32 @@ conv_sensor_value_to_float(const struct sensor_value* const p_val)
 }
 
 sensors_poll_result_t
-sensors_poll(void)
+sensors_poll(const time_t cur_unix_time)
 {
 #if USE_SENSOR_SEN66
 #if !RUUVI_MOCK_MEASUREMENTS
-    sen66_wrap_measurement_t                   measurement = { 0 };
-    const sen66_wrap_read_measurement_status_t status      = sen66_wrap_read_measured_values(&measurement);
+    sen66_wrap_measurement_t                   measurement   = { 0 };
+    const sen66_wrap_read_measurement_status_t status        = sen66_wrap_read_measured_values(&measurement);
+    sen66_voc_algorithm_state_t                voc_alg_state = { 0 };
+    if (!sen66_wrap_get_voc_algorithm_state(&voc_alg_state))
+    {
+        TLOG_ERR("%s failed", "sen66_wrap_get_voc_algorithm_state");
+    }
+    else
+    {
+        TLOG_INF(
+            "SEN66: VOC algorithm state: %u, %u, %u, %u",
+            voc_alg_state.voc_state[0],
+            voc_alg_state.voc_state[1],
+            voc_alg_state.voc_state[2],
+            voc_alg_state.voc_state[3]);
+        sensors_save_to_cache_sen66_voc_algorithm_state((uint32_t)cur_unix_time, &voc_alg_state);
+        if ((cur_unix_time - app_settings_get_sen66_voc_algorithm_state_timestamp())
+            >= CONFIG_RUUVI_AIR_SEN66_VOC_ALG_STATE_SAVING_INTERVAL)
+        {
+            app_settings_save_sen66_voc_algorithm_state((uint32_t)cur_unix_time, &voc_alg_state);
+        }
+    }
 #else
     sen66_wrap_measurement_t                   measurement = RUUVI_MOCK_MEASUREMENT_SEN66;
     const sen66_wrap_read_measurement_status_t status      = SEN66_WRAP_READ_MEASUREMENT_STATUS_OK;

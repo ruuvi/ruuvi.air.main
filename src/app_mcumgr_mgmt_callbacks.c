@@ -8,6 +8,9 @@
 #include <zephyr/mgmt/mcumgr/mgmt/callbacks.h>
 #include <zephyr/mgmt/mcumgr/grp/fs_mgmt/fs_mgmt.h>
 #include <zephyr/logging/log.h>
+#include "sensors.h"
+#include "app_settings.h"
+#include "tlog.h"
 
 LOG_MODULE_REGISTER(mcumgr_mgmt, LOG_LEVEL_INF);
 
@@ -56,6 +59,29 @@ conv_fs_mgmt_id_to_str(const uint16_t id)
         default:
             return "FS_MGMT_ID:Unknown";
     }
+}
+
+static enum mgmt_cb_return
+mgmt_cb_cmd_reset(
+    uint32_t            event,
+    enum mgmt_cb_return prev_status,
+    int32_t*            rc,
+    uint16_t*           group,
+    bool*               abort_more,
+    void*               data,
+    size_t              data_size)
+{
+    if (MGMT_EVT_OP_OS_MGMT_RESET != event)
+    {
+        TLOG_ERR("%s: Unexpected event 0x%08x", __func__, event);
+        return MGMT_CB_OK;
+    }
+    TLOG_WRN("MGMT_EVT_OP_OS_MGMT_RESET received, system will reboot!");
+    uint32_t                    cur_unix_time32 = 0;
+    sen66_voc_algorithm_state_t voc_alg_state   = { 0 };
+    sensors_get_from_cache_sen66_voc_algorithm_state(&cur_unix_time32, &voc_alg_state);
+    app_settings_save_sen66_voc_algorithm_state(cur_unix_time32, &voc_alg_state);
+    return MGMT_CB_OK;
 }
 
 static enum mgmt_cb_return
@@ -145,6 +171,11 @@ mgmt_cb_file_access(
     return MGMT_CB_OK;
 }
 
+static struct mgmt_callback g_mgmt_cb_event_grp_os_cmd_reset = {
+    .callback = &mgmt_cb_cmd_reset,
+    .event_id = MGMT_EVT_OP_OS_MGMT_RESET,
+};
+
 static struct mgmt_callback g_mgmt_cb_event_grp_smp_cmd_recv = {
     .callback = &mgmt_cb_cmd_recv,
     .event_id = MGMT_EVT_OP_CMD_RECV,
@@ -159,6 +190,7 @@ void
 app_mcumgr_mgmt_callbacks_init(const char* const p_mnt_point)
 {
     g_p_mnt_point = p_mnt_point;
+    mgmt_callback_register(&g_mgmt_cb_event_grp_os_cmd_reset);
     mgmt_callback_register(&g_mgmt_cb_event_grp_smp_cmd_recv);
     mgmt_callback_register(&g_mgmt_cb_event_grp_fs_file_access);
 }

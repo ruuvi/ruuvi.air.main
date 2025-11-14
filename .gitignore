@@ -17,3 +17,9 @@ venv*/
 
 VERSION
 
+# Tester script output
+*_read_hist.log
+
+# Mac OSX Files
+.DS_Store
+

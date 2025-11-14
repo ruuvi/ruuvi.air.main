@@ -603,10 +603,6 @@ connected(struct bt_conn* conn, uint8_t err)
         TLOG_ERR("Connection failed (err 0x%02x)", err);
         return;
     }
-    if (IS_ENABLED(CONFIG_LED_SHELL))
-    {
-        opt_rgb_ctrl_enable_led(false);
-    }
 }
 
 static void
@@ -624,10 +620,7 @@ disconnected(struct bt_conn* p_conn, uint8_t reason)
     p_info->p_conn    = NULL;
     p_info->is_active = false;
     k_work_submit(&g_advertise_work);
-    if (IS_ENABLED(CONFIG_LED_SHELL))
-    {
-        opt_rgb_ctrl_enable_led(true);
-    }
+    opt_rgb_ctrl_enable_led(true);
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {

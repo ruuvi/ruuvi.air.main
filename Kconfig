@@ -111,6 +111,21 @@ config RUUVI_AIR_SEN66_VOC_ALG_TUNING_PARAMS_LEARNING_TIME_GAIN_HOURS
 	  Past events will be forgotten after about twice the learning time.
 	  Allowed values are in range 1..1000.
 
+config RUUVI_AIR_SEN66_VOC_ALG_STATE_SAVING_INTERVAL
+	int "SEN66 VOC algorithm state saving interval (seconds)"
+	default 10
+	help
+	  Interval at which the VOC algorithm state is saved to persistent storage.
+	  Allowed values are in range 0..3600.
+
+config RUUVI_AIR_SEN66_VOC_ALG_STATE_RECOVERY_TIMEOUT
+	int "SEN66 VOC algorithm state recovery timeout (seconds)"
+	default 900
+	help
+	  Maximum age of the VOC algorithm state that can be recovered from persistent storage.
+	  If the saved state is older than this value, it will be ignored.
+	  Allowed values are in range 1..86400.
+
 config RUUVI_AIR_OPT4060_LUMINOSITY_MULTIPLIER
 	int "OPT4060 luminosity multiplier"
 	default 310

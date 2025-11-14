@@ -307,6 +307,34 @@ int16_t sen66_get_ambient_pressure(uint16_t* p_pressure_hpa);
  */
 int16_t sen66_set_ambient_pressure(const uint16_t pressure_hpa);
 
+typedef struct sen66_voc_algorithm_state_t {
+    uint16_t voc_state[4];
+} sen66_voc_algorithm_state_t;
+
+/**
+ * @brief sen66_get_voc_algorith_state
+ *
+ * Gets the VOC algorithm state from the device.
+ *
+ * @param[out] p_state Pointer to the state structure to be filled.
+ *
+ * @return error_code 0 on success, an error code otherwise.
+ */
+int16_t sen66_get_voc_algorithm_state(sen66_voc_algorithm_state_t* p_state);
+
+/**
+ * @brief sen66_set_voc_state
+ *
+ * Sets the VOC algorithm state on the device.
+ *
+ * @param[in] p_state Pointer to the state structure containing the values to
+ * be set.
+ *
+ * @return error_code 0 on success, an error code otherwise.
+ */
+int16_t
+sen66_set_voc_algorithm_state(const sen66_voc_algorithm_state_t* p_state);
+
 #ifdef __cplusplus
 }
 #endif

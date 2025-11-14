@@ -133,11 +133,15 @@ nrfjprog -f nrf52 --eraseall --qspieraseall
 ##### Flash RuuviAir:
 ```bash
 nrfjprog --recover
+nrfjprog --pinresetenable && nrfjprog --reset && nrfjprog --pinreset && nrfjprog --recover
 nrfjprog -f nrf52 --memwr 0x50000720 --val 0x00000004
 nrfjprog -f nrf52 --config "./nrfjprog_cfg_ruuviair.toml" --qspieraseall
 nrfjprog -f nrf52 --config "./nrfjprog_cfg_ruuviair.toml" --program "./build_ruuviair_hw2_release-dev/merged.ext_flash.hex" --qspisectorerase --verify
 nrfjprog -f nrf52 --program "./build_ruuviair_hw2_release-prod/merged.hex" --chiperase --verify --hardreset
+nrfjprog -f nrf52 --rbp ALL
 ```
+**Note:** After `nrfjprog --recover` we need to wait for 5 seconds until watchdog is triggered or execute `nrfjprog --pinresetenable && nrfjprog --reset && nrfjprog --pinreset && nrfjprog --recover`.
+
 ##### Flash nRF52840-DK:
 ```bash
 nrfjprog -f nrf52 --program "./build_nrf52840dk_hw2_release-dev/merged.ext_flash.hex" --qspisectorerase --verify
@@ -355,4 +359,118 @@ mkdir -p ~/.signing_keys
 python3 bootloader/mcuboot/scripts/imgtool.py keygen -t ecdsa-p256 -k ~/.signing_keys/b0_sign_key_private-prod.pem
 python3 bootloader/mcuboot/scripts/imgtool.py getpub -k ~/.signing_keys/b0_sign_key_private-prod.pem -e pem -o ~/.signing_keys/b0_sign_key_public-prod.pem
 python3 bootloader/mcuboot/scripts/imgtool.py keygen -t ecdsa-p256 -k ~/.signing_keys/image_sign-prod.pem
+```
+
+# Ruuvi Air MCUMgr shell commands
+
+RuuviAir contains management subsystem with shell, which supports the following commands.
+
+## Shell command **echo**
+Command **echo** prints back the passed parameter.
+
+Format:
+```
+ruuvi echo <message>
+```
+
+Examples:
+```
+ruuvi echo Hello
+ruuvi echo "Hello World"
+```
+
+## Shell command **led_brightness**
+
+**led_brightness** command allows to control brightness level of the main LED.
+
+Format:
+```
+ruuvi led_brightness <off|night|day|bright_day|0-100%|0.0-100.0%>
+```
+
+Examples:
+```
+ruuvi led_brightness off
+ruuvi led_brightness night
+ruuvi led_brightness day
+ruuvi led_brightness bright_day
+ruuvi led_brightness 25%
+ruuvi led_brightness 2.5%>
+```
+
+## Shell command **led_write_channels**
+
+**led_write_channels** command is used for testing purposes.
+It allows to set raw currents/PWM for the main LED.
+
+Format:
+```
+ruuvi led_write_channels <Cur_R [0-255]> <Cur_G [0-255]> <Cur_B [0-255]> <PWM_R [0-255]> <PWM_G [0-255]> <PWM_B [0-255]>
+```
+
+Examples:
+```
+ruuvi led_write_channels 250 80 100 128 128 128
+```
+
+## Shell command **led_get_color_table**
+
+**led_get_color_table** allows to get the color table for the specified predefined brightness level.
+
+Format:
+```
+ruuvi led_get_color_table <night|day|bright_day>
+```
+
+Examples:
+```
+ruuvi led_get_color_table night
+ruuvi led_get_color_table day
+ruuvi led_get_color_table bright_day
+```
+
+Format of output:
+```
+LED color table 'night|day|bright_day': <Current_R, Current_G, Current_B> [<PWM1_R, PWM1_G, PWM1_B> <PWM2_R, PWM2_G, PWM2_B> <PWM3_R, PWM3_G, PWM3_B> <PWM4_R, PWM4_G, PWM4_B> <PWM5_R, PWM5_G, PWM5_B>]
+```
+PWM1 - for AQI 'Excellent'
+PWM2 - for AQI 'Good'
+PWM3 - for AQI 'Fair'
+PWM4 - for AQI 'Poor'
+PWM5 - for AQI 'Very Poor'
+
+
+Example of output:
+```
+LED color table 'night': <12, 2, 10> [<0, 255, 90> <30, 255, 0> <240, 255, 0> <255, 80, 0> <255, 0, 0>]
+```
+
+## Shell command **led_set_color_table**
+
+**led_set_color_table** allows to set the color table for the specified predefined brightness level.
+
+Format:
+```
+ruuvi led_set_color_table <night|day|bright_day> <C_R> <C_G> <C_B> <R1> <G1> <B1> <R2> <G2> <B2> <R3> <G3> <B3> <R4> <G4> <B4> <R5> <G5> <B5>
+```
+
+Examples:
+```
+ruuvi led_set_color_table night 12 2 10 0 255 90 30 255 0 240 255 0 255 80 0 255 0 0
+```
+
+## Shell command **led_reset_color_table**
+
+**led_reset_color_table** allows to reset the color table for the specified predefined brightness level.
+
+Format:
+```
+ruuvi led_reset_color_table <night|day|bright_day>
+```
+
+Examples:
+```
+ruuvi led_reset_color_table night
+ruuvi led_reset_color_table day
+ruuvi led_reset_color_table bright_day
 ```

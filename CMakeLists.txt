@@ -138,6 +138,7 @@ target_sources(app PRIVATE
         src/sensors.h
         src/sen66_wrap.c
         src/sen66_wrap.h
+        src/shell_cmd_ruuvi.c
         src/spl_calc.c
         src/spl_calc.h
         src/utils.c

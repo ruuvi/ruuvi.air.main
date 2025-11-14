@@ -96,6 +96,12 @@ bool
 sen66_wrap_set_ambient_pressure(const uint16_t pressure_hpa);
 
 bool
+sen66_wrap_get_voc_algorithm_state(sen66_voc_algorithm_state_t* const p_state);
+
+bool
+sen66_wrap_set_voc_algorithm_state(const sen66_voc_algorithm_state_t* const p_state);
+
+bool
 sen66_wrap_device_reset(void);
 
 re_float

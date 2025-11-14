@@ -65,7 +65,7 @@ def write_rgb(writer, rec, current, which):  # which in {"R","G","B"}
     writer.writerow([rec["ts"], cur_r, cur_g, cur_b, rec["r"], rec["g"], rec["b"], rec["lum"]])
 
 
-def find_data_start(rows, g_threshold=500):
+def find_data_start(rows, g_threshold=400):
     """
     Find the start of actual data using the algorithm:
     1. Find first row where G > threshold and G > R
@@ -101,7 +101,7 @@ def main():
     ap.add_argument("input", help="Input CSV (columns: timestamp,R,G,B,luminosity)")
     ap.add_argument("output", help="Output CSV")
     ap.add_argument("--max-current", type=int, default=255, help="Stop after this current. Default: 255")
-    ap.add_argument("--g-threshold", type=float, default=500.0,
+    ap.add_argument("--g-threshold", type=float, default=400.0,
                     help="Green threshold for auto-detecting data start. Default: 500.0")
     args = ap.parse_args()
 

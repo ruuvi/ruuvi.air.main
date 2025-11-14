@@ -90,6 +90,7 @@ sen66_wrap_get_product_name(sen66_wrap_product_name_t* const p_product_name)
         }
         LOG_ERR("%s[retry=%d]: err=%d", "sen66_get_product_name", i, error);
     }
+    p_product_name->product_name[sizeof(p_product_name->product_name) - 1] = '\0';
     return flag_success;
 }
 
@@ -296,6 +297,40 @@ sen66_wrap_set_ambient_pressure(const uint16_t pressure_hpa)
 }
 
 bool
+sen66_wrap_get_voc_algorithm_state(sen66_voc_algorithm_state_t* const p_state)
+{
+    bool flag_success = false;
+    for (uint32_t i = 0; i < SEN66_WRAP_NUM_RETRIES; ++i)
+    {
+        const int16_t error = sen66_get_voc_algorithm_state(p_state);
+        if (NO_ERROR == error)
+        {
+            flag_success = true;
+            break;
+        }
+        LOG_ERR("%s[retry=%d]: err=%d", "sen66_get_ambient_pressure", i, error);
+    }
+    return flag_success;
+}
+
+bool
+sen66_wrap_set_voc_algorithm_state(const sen66_voc_algorithm_state_t* const p_state)
+{
+    bool flag_success = false;
+    for (uint32_t i = 0; i < SEN66_WRAP_NUM_RETRIES; ++i)
+    {
+        const int16_t error = sen66_set_voc_algorithm_state(p_state);
+        if (NO_ERROR == error)
+        {
+            flag_success = true;
+            break;
+        }
+        LOG_ERR("%s[retry=%d]: err=%d", "sen66_set_ambient_pressure", i, error);
+    }
+    return flag_success;
+}
+
+bool
 sen66_wrap_check(void)
 {
     if (!sen66_wrap_device_reset())
@@ -320,8 +355,8 @@ sen66_wrap_check(void)
         LOG_ERR("%s failed", "sen66_wrap_get_product_name");
         return false;
     }
-    LOG_INF("SEN66: Product name: %s", product_name.product_name);
-#if 0
+    LOG_INF("SEN66: Product name: %.*s", (int)sizeof(product_name.product_name), product_name.product_name);
+
     sen66_wrap_version_t version = { 0 };
     if (!sen66_wrap_get_version(&version))
     {
@@ -330,18 +365,26 @@ sen66_wrap_check(void)
     }
 
     LOG_INF(
-        "SEN66: Firmware: %u.%u, Hardware: %u.%u",
+        "SEN66: Firmware: %u.%u, Hardware: %u.%u, Protocol: %u.%u",
         version.firmware_major,
         version.firmware_minor,
         version.hardware_major,
-        version.hardware_minor);
+        version.hardware_minor,
+        version.protocol_major,
+        version.protocol_minor);
 
     if (0 != strcmp("SEN66", (const char*)product_name.product_name))
     {
-        LOG_ERR("The sensor is not SEN66, product_name: %s", product_name.product_name);
-        return false;
+        if ('\0' == product_name.product_name[0])
+        {
+            LOG_WRN("The sensor is not SEN66, product_name is empty");
+        }
+        else
+        {
+            LOG_ERR("The sensor is not SEN66, product_name: %s", product_name.product_name);
+            return false;
+        }
     }
-#endif
     return true;
 }
 
