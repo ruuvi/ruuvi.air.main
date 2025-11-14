@@ -9,8 +9,10 @@
 # $HOME/.nrfutil and $HOME/ncs are volume-mounted from GitHub Action and cached between runs.
 # --------------------------------------------------------------------
 
-LABEL org.opencontainers.image.source="https://github.com/ruuvi/ruuvi.air.main"
 FROM ubuntu:24.04
+
+LABEL org.opencontainers.image.source="https://github.com/ruuvi/ruuvi.air.main"
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV NCS_VERSION=v2.8.0
 
