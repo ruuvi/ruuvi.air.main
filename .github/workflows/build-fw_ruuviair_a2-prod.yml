@@ -1,27 +1,31 @@
-name: Build firmware (dev) for nRF52840DK hw2 release mock
+name: Build firmware (prod) for RuuviAir-A2
 
 on:
   push:
     branches: [ master ]
     tags: [ '*' ]
-  pull_request:
-    branches: [ '*' ]
-    types: [opened, synchronize, reopened]
 
 env:
   NCS_VERSION: v2.8.0
 
 jobs:
   build:
-    name: Build firmware (dev) for nRF52840DK hw2 release mock
-    environment: dev
+    name: Build firmware (prod) for RuuviAir-A2
+    environment: prod
     runs-on: ubuntu-24.04
 
     steps:
       - name: Install dependencies
         run: |
           sudo apt-get update
+          echo which yq
+          which yq
           sudo apt-get install -y srecord
+          YQ_VERSION=v4.46.1
+          sudo curl -L "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          echo which yq
+          which yq
 
       - name: Checkout the code
         uses: actions/checkout@v4     # Checks-out repository under $GITHUB_WORKSPACE
@@ -40,9 +44,9 @@ jobs:
           IMAGE_SIGN: ${{ secrets.IMAGE_SIGN }}
         run: |
           mkdir -p $HOME/.signing_keys
-          echo "$B0_SIGN_KEY_PRIVATE">$HOME/.signing_keys/b0_sign_key_private-dev.pem
+          echo "$B0_SIGN_KEY_PRIVATE">$HOME/.signing_keys/b0_sign_key_private-prod.pem
           echo "$B0_PROD_SIGN_KEY_PUBLIC">$HOME/.signing_keys/b0_sign_key_public-prod.pem
-          echo "$IMAGE_SIGN">$HOME/.signing_keys/image_sign-dev.pem
+          echo "$IMAGE_SIGN">$HOME/.signing_keys/image_sign-prod.pem
 
       # Step 1: Cache nrfutil
       - name: Cache nrfutil
@@ -112,7 +116,11 @@ jobs:
       - name: Check directories
         run: |
           set -x
+          which yq
+          yq --version
           eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
+          which yq
+          yq --version
           echo HOME: $HOME
           echo PATH: $PATH
           west --version
@@ -149,34 +157,24 @@ jobs:
           eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
           source ~/ncs/$NCS_VERSION/zephyr/zephyr-env.sh
           cd ~/ncs/$NCS_VERSION/ruuvi.air
-          ./build_nrf52840dk_hw2_release_mock.sh
-          ./build_nrf52840dk_hw2_release_mock_df_e0_f0.sh
+          ./build_ruuviair_a2_release-prod.sh
 
       - name: Remove symlink to code in ncs directory
         run: |
           set -x
           rm ~/ncs/$NCS_VERSION/ruuvi.air
 
-      - name: Upload artifact ruuvi_air_fw_nrf52840dk_hw2_release_mock-dev
+      - name: Upload artifact ruuvi_air_fw_ruuviair_a2-prod
         uses: actions/upload-artifact@v4
         with:
-          name: ruuvi_air_fw_nrf52840dk_hw2_release_mock-dev
+          name: ruuvi_air_fw_ruuviair_a2-prod
           path: |
-            ruuvi.air/build_nrf52840dk_hw2_release_mock-dev/merged.hex
-            ruuvi.air/build_nrf52840dk_hw2_release_mock-dev/merged.ext_flash.hex
-            ruuvi.air/build_nrf52840dk_hw2_release_mock-dev/b0_container.hex
-            ruuvi.air/build_nrf52840dk_hw2_release_mock-dev/signed_by_mcuboot_and_b0_mcuboot.bin
-            ruuvi.air/build_nrf52840dk_hw2_release_mock-dev/signed_by_mcuboot_and_b0_s1_image.bin
-            ruuvi.air/build_nrf52840dk_hw2_release_mock-dev/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin
-            ruuvi.air/build_nrf52840dk_hw2_release_mock-dev/ruuvi.air.c/zephyr/ruuvi_air_fw.signed.bin
+            ruuvi.air/build_ruuviair_a2_release-prod/merged.hex
+            ruuvi.air/build_ruuviair_a2_release-prod/merged.ext_flash.hex
+            ruuvi.air/build_ruuviair_a2_release-prod/b0_container.hex
+            ruuvi.air/build_ruuviair_a2_release-prod/signed_by_mcuboot_and_b0_mcuboot.bin
+            ruuvi.air/build_ruuviair_a2_release-prod/signed_by_mcuboot_and_b0_s1_image.bin
+            ruuvi.air/build_ruuviair_a2_release-prod/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin
+            ruuvi.air/build_ruuviair_a2_release-prod/ruuvi.air/zephyr/ruuvi_air_fw.signed.bin
 
-            ruuvi.air/build_nrf52840dk_hw2_release_mock_df_e0_f0-dev/merged.hex
-            ruuvi.air/build_nrf52840dk_hw2_release_mock_df_e0_f0-dev/merged.ext_flash.hex
-            ruuvi.air/build_nrf52840dk_hw2_release_mock_df_e0_f0-dev/b0_container.hex
-            ruuvi.air/build_nrf52840dk_hw2_release_mock_df_e0_f0-dev/signed_by_mcuboot_and_b0_mcuboot.bin
-            ruuvi.air/build_nrf52840dk_hw2_release_mock_df_e0_f0-dev/signed_by_mcuboot_and_b0_s1_image.bin
-            ruuvi.air/build_nrf52840dk_hw2_release_mock_df_e0_f0-dev/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin
-            ruuvi.air/build_nrf52840dk_hw2_release_mock_df_e0_f0-dev/ruuvi.air.c/zephyr/ruuvi_air_fw.signed.bin
-
-            ruuvi.air.c/nrfjprog_cfg_ruuviair.toml
-
+            ruuvi.air/nrfjprog_cfg_ruuviair.toml

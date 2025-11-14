@@ -62,20 +62,12 @@ typedef struct settings_raw_color_table_t
 static bool g_flag_config_mode = false;
 
 #if defined(CONFIG_BT_DIS_SETTINGS)
-bool g_flag_bt_dis_model_set = false;
-bool g_flag_bt_dis_manuf_set = false;
-#if defined(CONFIG_BT_DIS_SERIAL_NUMBER)
+bool g_flag_bt_dis_model_set  = false;
+bool g_flag_bt_dis_manuf_set  = false;
 bool g_flag_bt_dis_serial_set = false;
-#endif
-#if defined(CONFIG_BT_DIS_SW_REV)
-bool g_flag_bt_dis_sw_set = false;
-#endif
-#if defined(CONFIG_BT_DIS_FW_REV)
-bool g_flag_bt_dis_fw_set = false;
-#endif
-#if defined(CONFIG_BT_DIS_HW_REV)
-bool g_flag_bt_dis_hw_set = false;
-#endif
+bool g_flag_bt_dis_sw_set     = false;
+bool g_flag_bt_dis_fw_set     = false;
+bool g_flag_bt_dis_hw_set     = false;
 #endif // CONFIG_BT_DIS_SETTINGS
 
 static app_settings_sen66_voc_algorithm_state_t g_sen66_voc_algorithm_state = {
@@ -245,7 +237,7 @@ handle_bt_key(const char* const p_key, const char* const p_buf, const size_t len
 #if defined(CONFIG_BT_DIS_HW_REV)
     else if (0 == strcmp(APP_SETTINGS_KEY_BT_DIS_HW, p_key))
     {
-        if (0 == strncmp(CONFIG_BT_DIS_HW_REV_STR, p_buf, len))
+        if (0 == strncmp(app_hw_rev_get(), p_buf, len))
         {
             g_flag_bt_dis_hw_set = true;
         }
@@ -365,12 +357,20 @@ app_settings_init(void)
 #if defined(CONFIG_BT_DIS_HW_REV)
     if (!g_flag_bt_dis_hw_set)
     {
-        app_settings_save_key(
-            APP_SETTINGS_FULL_KEY_BT_DIS_HW,
-            CONFIG_BT_DIS_HW_REV_STR,
-            sizeof(CONFIG_BT_DIS_HW_REV_STR));
+        const char* const p_hw_rev = app_hw_rev_get();
+        app_settings_save_key(APP_SETTINGS_FULL_KEY_BT_DIS_HW, p_hw_rev, strlen(p_hw_rev) + 1);
     }
 #endif
+    if (!g_flag_bt_dis_model_set || !g_flag_bt_dis_manuf_set || !g_flag_bt_dis_serial_set || !g_flag_bt_dis_sw_set
+        || !g_flag_bt_dis_fw_set || !g_flag_bt_dis_hw_set)
+    {
+        // Reload settings to update in-memory values for BLE subsystem.
+        int err = settings_load();
+        if (0 != err)
+        {
+            TLOG_ERR("Settings loading failed: %d", err);
+        }
+    }
 #endif
     return true;
 }

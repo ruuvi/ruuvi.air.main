@@ -2,7 +2,7 @@
 
 exec ./build.sh \
   --board=nrf52840dk \
-  --board_rev=2 \
+  --board_rev_name=RuuviAir-A1 \
   --build_mode=release \
   "$@"
 

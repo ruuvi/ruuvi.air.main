@@ -2,7 +2,6 @@
 
 exec ./build.sh \
   --board=ruuviair \
-  --board_rev=2 \
-  --build_mode=release \
-  --prod \
+  --board_rev_name=RuuviAir-A3 \
+  --build_mode=debug \
   "$@"

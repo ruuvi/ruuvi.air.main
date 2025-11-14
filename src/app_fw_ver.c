@@ -6,10 +6,41 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <zephyr/sys/__assert.h>
+#include <zephyr/logging/log.h>
+#if defined(CONFIG_BOOTLOADER_MCUBOOT)
+#include <flash_map_pm.h>
+#include "fw_img_hw_rev.h"
+#endif // CONFIG_BOOTLOADER_MCUBOOT
 #include "app_version.h"
+#include "ncs_version.h"
+#include "version.h"
+#if APP_VERSION_NUMBER != 0
+#include "app_commit.h"
+#endif
+#include "ncs_commit.h"
+#include "zephyr_commit.h"
+#include "tlog.h"
+
+LOG_MODULE_DECLARE(main, LOG_LEVEL_INF);
 
 static char g_fw_ver_buf[sizeof(APP_VERSION_EXTENDED_STRING)];
+
+#if defined(CONFIG_BOOTLOADER_MCUBOOT)
+struct image_version g_fw_img_fw_ver;
+fw_image_hw_rev_t    g_fw_img_hw_rev;
+#endif // CONFIG_BOOTLOADER_MCUBOOT
+
+const int g_cfg_hw_rev =
+#if defined(CONFIG_BOARD_RUUVI_RUUVIAIR_REV_1)
+    1
+#elif defined(CONFIG_BOARD_RUUVI_RUUVIAIR_REV_2)
+    2
+#else
+    0
+#endif
+    ;
 
 /**
  * Reorder version string:
@@ -97,15 +128,118 @@ semver_move_build_before_extra(const char* const p_orig_ver, char* const p_out_b
 void
 app_fw_ver_init(void)
 {
+    __ASSERT(0 != g_cfg_hw_rev, "g_cfg_hw_rev not set, check Kconfig");
+
     // Rearrange version string to put build before extra, if both exist.
     if (!semver_move_build_before_extra(APP_VERSION_EXTENDED_STRING, g_fw_ver_buf, sizeof(g_fw_ver_buf)))
     {
         __ASSERT(false, "app_fw_ver_init failed: %s, %d", __FILE__, __LINE__);
     }
+
+#if defined(CONFIG_BOOTLOADER_MCUBOOT)
+    fw_img_print_image_info(PM_ID(mcuboot_primary), &g_fw_img_fw_ver, &g_fw_img_hw_rev);
+    if (g_fw_img_hw_rev.hw_rev_num != g_cfg_hw_rev)
+    {
+        LOG_ERR(
+            "Hardware revision mismatch: fw image hw_rev_id: %d, Kconfig: %d",
+            g_fw_img_hw_rev.hw_rev_num,
+            g_cfg_hw_rev);
+    }
+    __ASSERT(
+        g_fw_img_hw_rev.hw_rev_num == g_cfg_hw_rev,
+        "Hardware revision mismatch: fw image hw_rev_id: %d, Kconfig: %d",
+        g_fw_img_hw_rev.hw_rev_id,
+        g_cfg_hw_rev);
+
+    char expected_version_str[32];
+    snprintf(
+        expected_version_str,
+        sizeof(expected_version_str),
+        "%u.%u.%u+%" PRIu32,
+        g_fw_img_fw_ver.iv_major,
+        g_fw_img_fw_ver.iv_minor,
+        g_fw_img_fw_ver.iv_revision,
+        g_fw_img_fw_ver.iv_build_num);
+#endif // CONFIG_BOOTLOADER_MCUBOOT
+
+#if defined(CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION)
+    TLOG_INF(
+        "### RuuviAir: Image version: %s (FwInfoCnt: %u)",
+        CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION,
+        CONFIG_FW_INFO_FIRMWARE_VERSION);
+#if defined(CONFIG_BOOTLOADER_MCUBOOT)
+    if (0 != strcmp(expected_version_str, CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION))
+    {
+        LOG_ERR(
+            "Image version mismatch: fw image: %s, Kconfig: %s",
+            expected_version_str,
+            CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION);
+    }
+    __ASSERT(
+        0 == strcmp(expected_version_str, CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION),
+        "Image version mismatch: fw image: %s, Kconfig: %s",
+        expected_version_str,
+        CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION);
+#endif // CONFIG_BOOTLOADER_MCUBOOT
+#endif // CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION
+
+#if APP_VERSION_NUMBER != 0
+    TLOG_INF(
+        "### RuuviAir: Version: %s, build: %s, APP_VERSION_NUMBER: %s",
+        app_fw_ver_get(),
+        STRINGIFY(APP_BUILD_VERSION),
+        STRINGIFY(APP_VERSION_NUMBER));
+#if defined(CONFIG_BOOTLOADER_MCUBOOT)
+    if (0 != strcmp(expected_version_str, APP_VERSION_TWEAK_STRING))
+    {
+        LOG_ERR(
+            "Image version mismatch: fw image: %s, App Version: %s",
+            expected_version_str,
+            APP_VERSION_TWEAK_STRING);
+    }
+    __ASSERT(
+        0 == strcmp(expected_version_str, APP_VERSION_TWEAK_STRING),
+        "Image version mismatch: fw image: %s, App Version: %s",
+        expected_version_str,
+        APP_VERSION_TWEAK_STRING);
+#endif // CONFIG_BOOTLOADER_MCUBOOT
+
+    TLOG_INF(
+        "### RuuviAir: Version: %s, build: %s, commit: %s",
+        app_fw_ver_get(),
+        STRINGIFY(APP_BUILD_VERSION),
+        APP_COMMIT_STRING);
+#else
+    TLOG_INF("### RuuviAir: Version: %s, build: %s", app_fw_ver_get(), STRINGIFY(APP_BUILD_VERSION));
+#endif
+    TLOG_INF(
+        "### RuuviAir: NCS version: %s, build: %s, commit: %s",
+        NCS_VERSION_STRING,
+        STRINGIFY(NCS_BUILD_VERSION),
+        NCS_COMMIT_STRING);
+    TLOG_INF(
+        "### RuuviAir: Kernel version: %s, build: %s, commit: %s",
+        KERNEL_VERSION_EXTENDED_STRING,
+        STRINGIFY(BUILD_VERSION),
+        ZEPHYR_COMMIT_STRING);
 }
 
 const char*
 app_fw_ver_get(void)
 {
     return g_fw_ver_buf;
+}
+
+const char*
+app_hw_rev_get(void)
+{
+#if defined(CONFIG_BOOTLOADER_MCUBOOT)
+    if ('\0' == g_fw_img_hw_rev.hw_rev_name[0])
+    {
+        return CONFIG_BT_DIS_HW_REV_STR;
+    }
+    return g_fw_img_hw_rev.hw_rev_name;
+#else
+    return CONFIG_BT_DIS_HW_REV_STR;
+#endif // CONFIG_BOOTLOADER_MCUBOOT
 }

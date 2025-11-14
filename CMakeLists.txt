@@ -110,6 +110,8 @@ target_sources(app PRIVATE
         src/dsp_biquad_filter_a_weighting_20828.h
         src/dsp_rms.c
         src/dsp_rms.h
+        src/fw_img_hw_rev.c
+        src/fw_img_hw_rev.h
         src/hist_log.c
         src/hist_log.h
         src/main.c
@@ -159,6 +161,7 @@ target_include_directories(app PRIVATE
         dsp
         drivers/lp5810/include
         drivers/opt4060/include
+        ./include
         ${ZEPHYR_BASE}/kernel/include
         ${ARCH_DIR}/${ARCH}/include
 )

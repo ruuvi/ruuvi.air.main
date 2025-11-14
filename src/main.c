@@ -32,6 +32,7 @@
 #include "rgb_led.h"
 #include "lp5810_test.h"
 #include "opt_rgb_ctrl.h"
+#include "fw_img_hw_rev.h"
 #include "app_settings.h"
 #include "app_watchdog.h"
 #include "app_button.h"
@@ -418,36 +419,6 @@ int
 main(void)
 {
     app_fw_ver_init();
-#if defined(CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION)
-    TLOG_INF(
-        "### RuuviAir: Image version: %s (FwInfoCnt: %u)",
-        CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION,
-        CONFIG_FW_INFO_FIRMWARE_VERSION);
-#endif
-#if APP_VERSION_NUMBER != 0
-    TLOG_INF(
-        "### RuuviAir: Version: %s, build: %s, APP_VERSION_NUMBER: %s",
-        app_fw_ver_get(),
-        STRINGIFY(APP_BUILD_VERSION),
-        STRINGIFY(APP_VERSION_NUMBER));
-    // TLOG_INF(
-    //     "### RuuviAir: Version: %s, build: %s, commit: %s",
-    //     app_fw_ver_get(),
-    //     STRINGIFY(APP_BUILD_VERSION),
-    //     APP_COMMIT_STRING);
-#else
-    TLOG_INF("### RuuviAir: Version: %s, build: %s", app_fw_ver_get(), STRINGIFY(APP_BUILD_VERSION));
-#endif
-    TLOG_INF(
-        "### RuuviAir: NCS version: %s, build: %s, commit: %s",
-        NCS_VERSION_STRING,
-        STRINGIFY(NCS_BUILD_VERSION),
-        NCS_COMMIT_STRING);
-    TLOG_INF(
-        "### RuuviAir: Kernel version: %s, build: %s, commit: %s",
-        KERNEL_VERSION_EXTENDED_STRING,
-        STRINGIFY(BUILD_VERSION),
-        ZEPHYR_COMMIT_STRING);
     log_reset_cause();
     log_clocks();
 

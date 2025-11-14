@@ -2,8 +2,8 @@
 
 # This script builds the Ruuvi Air firmware for a specific board and revision.
 # It requires several command line arguments to specify the board, revision, build mode, etc.
-# Usage: ./build.sh --board={ruuviair|nrf52840dk} --board_rev={1|2} --build_mode={debug|release} [--build_dir_suffix=<suffix>] [--extra_cflags=<cflags>] [--trace] [--flash] [--flash_ext]
-# Example: ./build.sh --board=ruuviair --board_rev=1 --build_mode=debug --build_dir_suffix=mock --extra_cflags="-DRUUVI_MOCK_MEASUREMENTS=1"
+# Usage: ./build.sh --board={ruuviair|nrf52840dk} --board_rev_name={RuuviAir-A1|RuuviAir-A2|RuuviAir-A3} --build_mode={debug|release} [--build_dir_suffix=<suffix>] [--extra_cflags=<cflags>] [--trace] [--flash] [--flash_ext]
+# Example: ./build.sh --board=ruuviair --board_rev_name=RuuviAir-A3 --build_mode=debug --build_dir_suffix=mock --extra_cflags="-DRUUVI_MOCK_MEASUREMENTS=1"
 
 set -x -e # Print commands and their arguments and Exit immediately if a command exits with a non-zero status.
 
@@ -42,6 +42,7 @@ fi
 
 # Initialize defaults (if any)
 board=""
+board_rev_name=""
 board_rev=""
 build_mode=""
 build_dir_suffix=""
@@ -60,8 +61,8 @@ for arg in "$@"; do
       board="${arg#*=}"
       shift
       ;;
-    --board_rev=*)
-      board_rev="${arg#*=}"
+    --board_rev_name=*)
+      board_rev_name="${arg#*=}"
       shift
       ;;
     --build_mode=*)
@@ -137,14 +138,31 @@ if [ -z "$board" ]; then
   exit 1
 fi
 
-if [ -z "$board_rev" ]; then
+if [ -z "$board_rev_name" ]; then
   echo "Error: --board_rev is required" >&2
   exit 1
 fi
-if [[ ! "$board_rev" =~ ^[0-9]+$ ]]; then
-  echo "Error: --board_rev must be an integer" >&2
+if [ "$board_rev_name" == "RuuviAir-A1" ]; then
+  board_suffix="a1"
+  board_rev=1
+elif [ "$board_rev_name" == "RuuviAir-A2" ]; then
+  board_suffix="a2"
+  board_rev=2
+elif [ "$board_rev_name" == "RuuviAir-A3" ]; then
+  board_suffix="a3"
+  # A3 is fully compatible with A2, from the firmware perspective
+  board_rev=2
+else
+  echo "Error: Unknown board_rev_name '$board_rev_name'. Supported values are 'RuuviAir-A1', 'RuuviAir-A2', 'RuuviAir-A3'." >&2
   exit 1
 fi
+board_rev_id_hex=$(printf "0x%08X" $board_rev)
+
+# IMAGE_TLV_RUUVI_HW_REV_ID:   0x48A0 = 18592
+CUSTOM_TLV_RUUVI_HW_REV_ID=18592
+# IMAGE_TLV_RUUVI_HW_REV_NAME: 0x48A1 = 18593
+CUSTOM_TLV_RUUVI_HW_REV_NAME=18593
+
 
 if [ -z "$build_mode" ]; then
   echo "Error: --build_mode is required" >&2
@@ -401,6 +419,7 @@ create_version_file "./VERSION" "$app_full_ver"
 
 BUILD_SUFFIX=""
 EXTRA_FLAGS=()
+IMAGE_SIGNING_KEY_FILE=""
 case "$build_mode" in
   debug)
     CONF_FILE="prj_common.conf;prj_hw${board_rev}.conf;prj_${build_mode}.conf"
@@ -415,6 +434,8 @@ case "$build_mode" in
       -DSB_CONFIG_SECURE_BOOT_MCUBOOT_VERSION=\"${mcuboot_base_ver}\"
       -Dfirmware_loader_CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION=\"${fwloader_base_ver}\"
       -DCONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION=\"${app_base_ver}\"
+      "-DCONFIG_MCUBOOT_EXTRA_IMGTOOL_ARGS=\"--custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME $board_rev_name\""
+      "-Dfirmware_loader_CONFIG_MCUBOOT_EXTRA_IMGTOOL_ARGS=\"--custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME $board_rev_name\""
 
       -Db0_CONFIG_FW_INFO_FIRMWARE_VERSION=${b0_major_ver}
       -Dmcuboot_CONFIG_FW_INFO_FIRMWARE_VERSION=${mcuboot_major_ver}
@@ -427,15 +448,17 @@ case "$build_mode" in
     )
     if [ "$flag_prod" = true ]; then
       BUILD_SUFFIX="-prod"
+      IMAGE_SIGNING_KEY_FILE="$HOME/.signing_keys/image_sign-prod.pem"
       EXTRA_FLAGS+=(
         -DSB_CONFIG_SECURE_BOOT_SIGNING_KEY_FILE=\"$HOME/.signing_keys/b0_sign_key_private-prod.pem\"
-        -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"$HOME/.signing_keys/image_sign-prod.pem\"
+        -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"$IMAGE_SIGNING_KEY_FILE\"
       )
     else
       BUILD_SUFFIX="-dev"
+      IMAGE_SIGNING_KEY_FILE="$HOME/.signing_keys/image_sign-dev.pem"
       EXTRA_FLAGS+=(
         -DSB_CONFIG_SECURE_BOOT_SIGNING_KEY_FILE=\"$HOME/.signing_keys/b0_sign_key_private-dev.pem\"
-        -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"$HOME/.signing_keys/image_sign-dev.pem\"
+        -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"$IMAGE_SIGNING_KEY_FILE\"
         -DSB_CONFIG_SECURE_BOOT_PUBLIC_KEY_FILES=\"$HOME/.signing_keys/b0_sign_key_public-prod.pem\"
       )
     fi
@@ -450,7 +473,7 @@ if [ -n "$extra_conf" ]; then
   CONF_FILE="$CONF_FILE;$extra_conf"
 fi
 
-BUILD_DIR="build_${board}_hw${board_rev}_${build_mode}${build_dir_suffix:+_$build_dir_suffix}${BUILD_SUFFIX}"
+BUILD_DIR="build_${board}_${board_suffix}_${build_mode}${build_dir_suffix:+_$build_dir_suffix}${BUILD_SUFFIX}"
 
 if [ "$flag_clean" = true ]; then
   rm -rf $BUILD_DIR
@@ -465,7 +488,7 @@ case "$board" in
     ;;
   nrf52840dk)
     WEST_BOARD="nrf52840dk_ruuviair@$board_rev/nrf52840"
-    BOARD_NORMALIZED="nrf52840dk_nrf52840"
+    BOARD_NORMALIZED="nrf52840dk_ruuviair_nrf52840"
     ;;
   *)
     echo "Error: Unsupported --board" >&2
@@ -507,8 +530,48 @@ fi
 
 RUUVI_AIR_BUILD_DIR="$BUILD_DIR/$CUR_DIR_NAME/zephyr"
 
+
 # check if build_mode is release
 if [ "$build_mode" = "release" ]; then
+  s0_image_size=$(yq '.s0_image.size' "$PM_STATIC_YML_FILE")
+  s1_image_size=$(yq '.s1_image.size' "$PM_STATIC_YML_FILE")
+
+  python3 \
+    "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
+    --version $mcuboot_base_ver --align 4 --slot-size $s0_image_size \
+    --pad-header --header-size 0x200 \
+    -k $IMAGE_SIGNING_KEY_FILE \
+    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
+    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
+    $BUILD_DIR/signed_by_b0_mcuboot.bin \
+    $BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.bin
+  python3 \
+    "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
+    --version $mcuboot_base_ver --align 4 --slot-size $s0_image_size \
+    --pad-header --header-size 0x200 \
+    -k $IMAGE_SIGNING_KEY_FILE \
+    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
+    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
+    $BUILD_DIR/signed_by_b0_mcuboot.hex \
+    $BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex
+  python3 \
+    "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
+    --version $mcuboot_base_ver --align 4 --slot-size $s1_image_size \
+    --pad-header --header-size 0x200 \
+    -k $IMAGE_SIGNING_KEY_FILE \
+    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
+    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
+    $BUILD_DIR/signed_by_b0_s1_image.bin \
+    $BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.bin
+  python3 \
+    "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
+    --version $mcuboot_base_ver --align 4 --slot-size $s1_image_size \
+    --pad-header --header-size 0x200 \
+    -k $IMAGE_SIGNING_KEY_FILE \
+    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
+    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
+    $BUILD_DIR/signed_by_b0_s1_image.hex \
+    $BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex
   python3 \
     $ZEPHYR_BASE/scripts/build/mergehex.py \
       -o $BUILD_DIR/merged.hex \

@@ -1,4 +1,4 @@
-name: Build firmware (dev) for RuuviAir hw2
+name: Build firmware (dev) for RuuviAir-A1
 
 on:
   push:
@@ -13,7 +13,7 @@ env:
 
 jobs:
   build:
-    name: Build firmware (dev) for RuuviAir hw2
+    name: Build firmware (dev) for RuuviAir-A1
     environment: dev
     runs-on: ubuntu-24.04
 
@@ -21,7 +21,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
+          echo which yq
+          which yq
           sudo apt-get install -y srecord
+          YQ_VERSION=v4.46.1
+          sudo curl -L "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          echo which yq
+          which yq
 
       - name: Checkout the code
         uses: actions/checkout@v4     # Checks-out repository under $GITHUB_WORKSPACE
@@ -112,7 +119,11 @@ jobs:
       - name: Check directories
         run: |
           set -x
+          which yq
+          yq --version
           eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
+          which yq
+          yq --version
           echo HOME: $HOME
           echo PATH: $PATH
           west --version
@@ -149,25 +160,25 @@ jobs:
           eval "$(nrfutil toolchain-manager env --ncs-version $NCS_VERSION --as-script)"
           source ~/ncs/$NCS_VERSION/zephyr/zephyr-env.sh
           cd ~/ncs/$NCS_VERSION/ruuvi.air
-          ./build_ruuviair_hw2_release-dev.sh
+          ./build_ruuviair_a1_release-dev.sh
 
       - name: Remove symlink to code in ncs directory
         run: |
           set -x
           rm ~/ncs/$NCS_VERSION/ruuvi.air
 
-      - name: Upload artifact ruuvi_air_fw_ruuviair_hw2-dev
+      - name: Upload artifact ruuvi_air_fw_ruuviair_a1-dev
         uses: actions/upload-artifact@v4
         with:
-          name: ruuvi_air_fw_ruuviair_hw2-dev
+          name: ruuvi_air_fw_ruuviair_a1-dev
           path: |
-            ruuvi.air/build_ruuviair_hw2_release-dev/merged.hex
-            ruuvi.air/build_ruuviair_hw2_release-dev/merged.ext_flash.hex
-            ruuvi.air/build_ruuviair_hw2_release-dev/b0_container.hex
-            ruuvi.air/build_ruuviair_hw2_release-dev/signed_by_mcuboot_and_b0_mcuboot.bin
-            ruuvi.air/build_ruuviair_hw2_release-dev/signed_by_mcuboot_and_b0_s1_image.bin
-            ruuvi.air/build_ruuviair_hw2_release-dev/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin
-            ruuvi.air/build_ruuviair_hw2_release-dev/ruuvi.air/zephyr/ruuvi_air_fw.signed.bin
+            ruuvi.air/build_ruuviair_a1_release-dev/merged.hex
+            ruuvi.air/build_ruuviair_a1_release-dev/merged.ext_flash.hex
+            ruuvi.air/build_ruuviair_a1_release-dev/b0_container.hex
+            ruuvi.air/build_ruuviair_a1_release-dev/signed_by_mcuboot_and_b0_mcuboot.bin
+            ruuvi.air/build_ruuviair_a1_release-dev/signed_by_mcuboot_and_b0_s1_image.bin
+            ruuvi.air/build_ruuviair_a1_release-dev/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin
+            ruuvi.air/build_ruuviair_a1_release-dev/ruuvi.air/zephyr/ruuvi_air_fw.signed.bin
 
-            ruuvi.air/nrfjprog_cfg_ruuviair.toml
+            ruuvi.air.c/nrfjprog_cfg_ruuviair.toml
 

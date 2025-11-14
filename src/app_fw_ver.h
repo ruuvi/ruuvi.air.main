@@ -17,6 +17,9 @@ app_fw_ver_init(void);
 const char*
 app_fw_ver_get(void);
 
+const char*
+app_hw_rev_get(void);
+
 #ifdef __cplusplus
 }
 #endif
