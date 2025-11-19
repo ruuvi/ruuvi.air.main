@@ -62,6 +62,22 @@ else
     --define sonar.coverageReportPaths=coverage.xml \
     --define sonar.host.url=https://sonarcloud.io \
     --define sonar.cfamily.threads=$(nproc)
+  cd b0_hook
+  sonar-scanner --debug \
+    --define sonar.cfamily.build-wrapper-output="../build-sonar/bw-output" \
+    --define sonar.host.url=https://sonarcloud.io \
+    --define sonar.cfamily.threads=$(nproc)
+  cd ../mcuboot_hook
+  sonar-scanner --debug \
+    --define sonar.cfamily.build-wrapper-output="../build-sonar/bw-output" \
+    --define sonar.host.url=https://sonarcloud.io \
+    --define sonar.cfamily.threads=$(nproc)
+  cd ../fw_loader
+  sonar-scanner --debug \
+    --define sonar.cfamily.build-wrapper-output="../build-sonar/bw-output" \
+    --define sonar.host.url=https://sonarcloud.io \
+    --define sonar.cfamily.threads=$(nproc)
+  cd ..
   rm -f coverage.xml
   rm -rf build-sonar
   rm -rf .scannerwork

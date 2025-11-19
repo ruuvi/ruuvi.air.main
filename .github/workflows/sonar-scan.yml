@@ -220,6 +220,10 @@ jobs:
           mv "$GITHUB_WORKSPACE/${PROJECT_DIR}" "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}"
 
           docker run --rm \
+            --network none \
+            --cap-drop NET_ADMIN \
+            --cap-drop NET_RAW \
+            --cap-drop NET_BIND_SERVICE \
             --user "$(id -u)":"$(id -g)" \
             -e HOME=$HOME \
             -e USER="$(id -un)" \
@@ -227,7 +231,6 @@ jobs:
             -e HOST_GID="$(id -g)" \
             -e HOST_USER="$(id -un)" \
             -e HOST_GROUP="$(id -gn)" \
-            -e SONAR_TOKEN="${SONAR_TOKEN:-}" \
             -v "$HOME:$HOME" \
             -v "$RUNNER_TEMP/signing_keys:$HOME/.signing_keys:ro" \
             -v "$HOME/bin/build-wrapper-linux-x86:$HOME/bin/build-wrapper-linux-x86" \
@@ -300,16 +303,46 @@ jobs:
               fi
             '
 
-      # - name: SonarQube Scan
-      #   uses: SonarSource/sonarqube-scan-action@v6
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #   with:
-      #     projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
-      #     args: >
-      #       --debug
-      #       --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
-      #       --define sonar.coverageReportPaths=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/coverage.xml
+      - name: SonarQube Scan ruuvi.air.main
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: ~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
+          args: >
+            --debug
+            --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+            --define sonar.coverageReportPaths=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/coverage.xml
+
+      - name: SonarQube Scan ruuvi.air.b0
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: ~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
+          args: >
+            --debug
+            --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+
+      - name: SonarQube Scan ruuvi.air.mcuboot
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: ~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
+          args: >
+            --debug
+            --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+
+      - name: SonarQube Scan ruuvi.air.fw_loader
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: ~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
+          args: >
+            --debug
+            --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
 
       # - name: SonarQube Scan
       #   env:
