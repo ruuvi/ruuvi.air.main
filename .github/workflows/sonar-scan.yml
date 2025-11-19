@@ -301,7 +301,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
-          projectBaseDir: ~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
+          projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
           args: >
             --debug
             --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
@@ -312,7 +312,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
-          projectBaseDir: ~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
+          projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
           args: >
             --debug
             --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
@@ -322,7 +322,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
-          projectBaseDir: ~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
+          projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
           args: >
             --debug
             --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
@@ -332,7 +332,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
-          projectBaseDir: ~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
+          projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
           args: >
             --debug
             --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
