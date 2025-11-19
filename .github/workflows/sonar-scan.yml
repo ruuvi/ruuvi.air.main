@@ -308,43 +308,37 @@ jobs:
             --define sonar.coverageReportPaths=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/coverage.xml
 
       - name: SonarQube Scan ruuvi.air.b0
-        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
-          args: >
-            --debug
-            --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+        run: |
+          set -xeuo pipefail
+          cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
+          export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
+          which sonar-scanner
+          sonar-scanner --debug \
+            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+            --define sonar.coverageReportPaths=../coverage.xml
 
       - name: SonarQube Scan ruuvi.air.mcuboot
-        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
-          args: >
-            --debug
-            --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+        run: |
+          set -xeuo pipefail
+          cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
+          export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
+          which sonar-scanner
+          sonar-scanner --debug \
+            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+            --define sonar.coverageReportPaths=../coverage.xml
 
       - name: SonarQube Scan ruuvi.air.fw_loader
-        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
-          args: >
-            --debug
-            --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
-
-      # - name: SonarQube Scan
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #   run: |
-      #     set -xeuo pipefail
-      #     cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
-      #     export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
-      #     which sonar-scanner
-      #     sonar-scanner --debug \
-      #       --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
-      #       --define sonar.coverageReportPaths=coverage.xml
+        run: |
+          set -xeuo pipefail
+          cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
+          export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
+          which sonar-scanner
+          sonar-scanner --debug \
+            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+            --define sonar.coverageReportPaths=../coverage.xml
