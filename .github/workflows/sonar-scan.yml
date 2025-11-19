@@ -319,11 +319,8 @@ jobs:
           cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
           export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
           which sonar-scanner
-          branch=$(git rev-parse --abbrev-ref HEAD)
           sonar-scanner --debug \
-            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
-            --define sonar.coverageReportPaths=../coverage.xml \
-            -Dsonar.branch.name="$branch"
+            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json
 
       - name: SonarQube Scan ruuvi.air.mcuboot
         env:
@@ -337,11 +334,8 @@ jobs:
           cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
           export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
           which sonar-scanner
-          branch=$(git rev-parse --abbrev-ref HEAD)
           sonar-scanner --debug \
-            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
-            --define sonar.coverageReportPaths=../coverage.xml \
-            -Dsonar.branch.name="$branch"
+            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json
 
       - name: SonarQube Scan ruuvi.air.fw_loader
         env:
@@ -355,8 +349,5 @@ jobs:
           cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
           export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
           which sonar-scanner
-          branch=$(git rev-parse --abbrev-ref HEAD)
           sonar-scanner --debug \
-            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
-            --define sonar.coverageReportPaths=../coverage.xml \
-            -Dsonar.branch.name="$branch"
+            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json
