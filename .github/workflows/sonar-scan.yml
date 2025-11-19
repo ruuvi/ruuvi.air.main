@@ -304,8 +304,8 @@ jobs:
           projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
           args: >
             --debug
-            --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
-            --define sonar.coverageReportPaths=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/coverage.xml
+            --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+            --define sonar.coverageReportPaths=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/coverage.xml
 
       - name: SonarQube Scan ruuvi.air.b0
         uses: SonarSource/sonarqube-scan-action@v6
@@ -315,7 +315,7 @@ jobs:
           projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
           args: >
             --debug
-            --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+            --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
 
       - name: SonarQube Scan ruuvi.air.mcuboot
         uses: SonarSource/sonarqube-scan-action@v6
@@ -325,7 +325,7 @@ jobs:
           projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
           args: >
             --debug
-            --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+            --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
 
       - name: SonarQube Scan ruuvi.air.fw_loader
         uses: SonarSource/sonarqube-scan-action@v6
@@ -335,7 +335,7 @@ jobs:
           projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
           args: >
             --debug
-            --define sonar.cfamily.compile-commands=~/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
+            --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
 
       # - name: SonarQube Scan
       #   env:
