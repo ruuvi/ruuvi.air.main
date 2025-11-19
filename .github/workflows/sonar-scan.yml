@@ -282,7 +282,6 @@ jobs:
               gcovr \
                 --object-directory twister-out \
                 --sonarqube \
-                --verbose \
                 --output coverage.xml \
                 --exclude 'tests/.*' \
                 --exclude 'components/.*'
@@ -295,12 +294,6 @@ jobs:
               find . -type f -name "*.gcov" -exec rm -f {} \;
               find . -type f -name 'gtestresults.xml' -exec rm -f {} \;
               rm -rf twister-out
-
-              if [ ! -z "$SONAR_TOKEN" ]; then
-                sonar-scanner --debug \
-                  --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
-                  --define sonar.coverageReportPaths=coverage.xml
-              fi
             '
 
       - name: SonarQube Scan ruuvi.air.main
