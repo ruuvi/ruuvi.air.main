@@ -29,6 +29,41 @@ LOG_MODULE_REGISTER(lp5810, CONFIG_LED_LOG_LEVEL);
 #define LP5810_CHIP_ENABLE_DELAY_US     (1000)
 #define LP5810_DELAY_BETWEEN_RETRIES_US (500)
 
+#if !defined(BITS_PER_BYTE)
+#define BITS_PER_BYTE (8U)
+#else
+_Static_assert(BITS_PER_BYTE == 8U, "BITS_PER_BYTE != 8"); // NOSONAR
+#endif
+
+#if !defined(BYTE_MASK)
+#define BYTE_MASK (0xFFU)
+#else
+_Static_assert(BYTE_MASK == 0xFFU, "BYTE_MASK != 0xFFU"); // NOSONAR
+#endif
+
+typedef uint16_t lp5810_reg_t;
+
+static inline lp5810_reg_t lp5810_reg_manual_dc(const lp5810_led_idx_e channel)
+{
+	return (lp5810_reg_t)LP5810_BASE_REG_MANUAL_DC + (lp5810_reg_t)channel;
+}
+
+static inline lp5810_reg_t lp5810_reg_manual_pwm(const lp5810_led_idx_e channel)
+{
+	return (lp5810_reg_t)LP5810_BASE_REG_MANUAL_PWM + (lp5810_reg_t)channel;
+}
+
+static inline lp5810_reg_t lp5810_reg_auto_dc(const lp5810_led_idx_e channel)
+{
+	return (lp5810_reg_t)LP5810_BASE_REG_AUTO_DC + (lp5810_reg_t)channel;
+}
+
+static inline lp5810_reg_t lp5810_reg_auto_animation_base(const lp5810_led_idx_e channel)
+{
+	return (lp5810_reg_t)LP5810_BASE_REG_AUTO_ANIMATION +
+	       ((lp5810_reg_t)channel * LP5810_AUTO_ANIMATION_CFG_SIZE);
+}
+
 struct lp5810_config {
 	struct i2c_dt_spec i2c;
 	const struct gpio_dt_spec gpio_enable;
@@ -47,19 +82,20 @@ struct lp5810_data {
 	uint8_t led_mask;                 /* Mask of enabled LEDs */
 };
 
-static uint8_t lp5810_i2c_addr(const struct device *const p_dev, const uint16_t reg)
+static uint8_t lp5810_i2c_addr(const struct device *const p_dev, const lp5810_reg_t reg)
 {
 	const struct lp5810_config *const p_config = p_dev->config;
-	return p_config->i2c.addr + ((reg >> 8) & 0x03);
+	return (uint8_t)(p_config->i2c.addr +
+			 ((reg >> BITS_PER_BYTE) & LP5810_I2C_ADDR_LSB_REG_MASK));
 }
 
-static bool lp5810_reg_read(const struct device *const p_dev, const uint16_t reg,
+static bool lp5810_reg_read(const struct device *const p_dev, const lp5810_reg_t reg,
 			    uint8_t *const p_val)
 {
 	const struct lp5810_config *p_config = p_dev->config;
 	const uint8_t i2c_addr = lp5810_i2c_addr(p_dev, reg);
 
-	if (0 != i2c_burst_read(p_config->i2c.bus, i2c_addr, (uint8_t)(reg & 0xFFU), p_val,
+	if (0 != i2c_burst_read(p_config->i2c.bus, i2c_addr, (uint8_t)(reg & BYTE_MASK), p_val,
 				sizeof(*p_val))) {
 		return false;
 	}
@@ -68,7 +104,7 @@ static bool lp5810_reg_read(const struct device *const p_dev, const uint16_t reg
 }
 
 #if 0
-static bool lp5810_reg_read_with_retries(const struct device *const p_dev, const uint16_t reg,
+static bool lp5810_reg_read_with_retries(const struct device *const p_dev, const lp5810_reg_t reg,
 					 uint8_t *const p_val)
 {
 	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
@@ -82,12 +118,12 @@ static bool lp5810_reg_read_with_retries(const struct device *const p_dev, const
 }
 #endif
 
-static bool lp5810_reg_write(const struct device *const p_dev, const uint16_t reg,
+static bool lp5810_reg_write(const struct device *const p_dev, const lp5810_reg_t reg,
 			     const uint8_t val)
 {
 	const struct lp5810_config *p_config = p_dev->config;
 	const uint8_t i2c_addr = lp5810_i2c_addr(p_dev, reg);
-	const uint8_t tx_buf[] = {(uint8_t)(reg & 0xFFU), (uint8_t)(val & 0xFFU)};
+	const uint8_t tx_buf[] = {(uint8_t)(reg & BYTE_MASK), (uint8_t)(val & BYTE_MASK)};
 
 	if (0 != i2c_write(p_config->i2c.bus, tx_buf, sizeof(tx_buf), i2c_addr)) {
 		return false;
@@ -95,10 +131,10 @@ static bool lp5810_reg_write(const struct device *const p_dev, const uint16_t re
 	return true;
 }
 
-static bool lp5810_reg_write_with_retries(const struct device *const p_dev, const uint8_t reg,
+static bool lp5810_reg_write_with_retries(const struct device *const p_dev, const lp5810_reg_t reg,
 					  const uint8_t val)
 {
-	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
+	for (int32_t i = 0; i < LP5810_NUM_RETRIES; ++i) {
 		if (lp5810_reg_write(p_dev, reg, val)) {
 			return true;
 		}
@@ -108,7 +144,7 @@ static bool lp5810_reg_write_with_retries(const struct device *const p_dev, cons
 	return false;
 }
 
-static bool lp5810_buf_write(const struct device *const p_dev, const uint16_t start_reg,
+static bool lp5810_buf_write(const struct device *const p_dev, const lp5810_reg_t start_reg,
 			     const uint8_t *const p_buf, const size_t buf_len)
 {
 	const struct lp5810_config *const p_config = p_dev->config;
@@ -119,7 +155,7 @@ static bool lp5810_buf_write(const struct device *const p_dev, const uint16_t st
 			sizeof(p_data->write_chan_buf) - 1);
 		return false;
 	}
-	p_data->write_chan_buf[0] = (uint8_t)(start_reg & 0xFFU);
+	p_data->write_chan_buf[0] = (uint8_t)(start_reg & BYTE_MASK);
 	memcpy(&p_data->write_chan_buf[1], p_buf, buf_len);
 
 	if (0 != i2c_write(p_config->i2c.bus, p_data->write_chan_buf, buf_len + 1, i2c_addr)) {
@@ -129,10 +165,10 @@ static bool lp5810_buf_write(const struct device *const p_dev, const uint16_t st
 }
 
 static bool lp5810_buf_write_with_retries(const struct device *const p_dev,
-					  const uint16_t start_reg, const uint8_t *const p_buf,
+					  const lp5810_reg_t start_reg, const uint8_t *const p_buf,
 					  const size_t buf_len)
 {
-	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
+	for (int32_t i = 0; i < LP5810_NUM_RETRIES; ++i) {
 		if (lp5810_buf_write(p_dev, start_reg, p_buf, buf_len)) {
 			return true;
 		}
@@ -142,23 +178,24 @@ static bool lp5810_buf_write_with_retries(const struct device *const p_dev,
 	return false;
 }
 
-static bool lp5810_buf_read(const struct device *const p_dev, const uint16_t start_reg,
+static bool lp5810_buf_read(const struct device *const p_dev, const lp5810_reg_t start_reg,
 			    uint8_t *const p_buf, const size_t buf_len)
 {
 	const struct lp5810_config *const p_config = p_dev->config;
 	const uint8_t i2c_addr = lp5810_i2c_addr(p_dev, start_reg);
 
-	if (0 != i2c_burst_read(p_config->i2c.bus, i2c_addr, (uint8_t)(start_reg & 0xFFU), p_buf,
-				buf_len)) {
+	if (0 != i2c_burst_read(p_config->i2c.bus, i2c_addr, (uint8_t)(start_reg & BYTE_MASK),
+				p_buf, buf_len)) {
 		return false;
 	}
 	return true;
 }
 
-static bool lp5810_buf_read_with_retries(const struct device *const p_dev, const uint16_t start_reg,
-					 uint8_t *const p_buf, const size_t buf_len)
+static bool lp5810_buf_read_with_retries(const struct device *const p_dev,
+					 const lp5810_reg_t start_reg, uint8_t *const p_buf,
+					 const size_t buf_len)
 {
-	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
+	for (int32_t i = 0; i < LP5810_NUM_RETRIES; ++i) {
 		if (lp5810_buf_read(p_dev, start_reg, p_buf, buf_len)) {
 			return true;
 		}
@@ -183,7 +220,7 @@ static bool lp5810_ll_read_chip_enable(const struct device *const dev, bool *con
 		return false;
 	}
 	*p_flag_enable =
-		((value & LP5810_REG_CHIP_EN_MASK) == LP5810_REG_CHIP_EN_VAL) ? true : false;
+		(LP5810_REG_CHIP_EN_VAL == (value & LP5810_REG_CHIP_EN_MASK)) ? true : false;
 
 	return true;
 }
@@ -191,7 +228,7 @@ static bool lp5810_ll_read_chip_enable(const struct device *const dev, bool *con
 static bool lp5810_read_chip_enable_with_retries(const struct device *const dev,
 						 bool *const p_flag_enable)
 {
-	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
+	for (int32_t i = 0; i < LP5810_NUM_RETRIES; ++i) {
 		if (lp5810_ll_read_chip_enable(dev, p_flag_enable)) {
 			return true;
 		}
@@ -215,7 +252,7 @@ static bool lp5810_ll_write_chip_enable(const struct device *const dev, const bo
 static bool lp5810_write_chip_enable_with_retries(const struct device *const dev,
 						  const bool flag_enable)
 {
-	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
+	for (int32_t i = 0; i < LP5810_NUM_RETRIES; ++i) {
 		if (lp5810_ll_write_chip_enable(dev, flag_enable)) {
 			return true;
 		}
@@ -229,7 +266,7 @@ static bool lp5810_check_if_device_present(const struct device *dev)
 	lp5810_ll_software_reset(dev);
 
 	bool is_chip_responding = false;
-	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
+	for (int32_t i = 0; i < LP5810_NUM_RETRIES; ++i) {
 		k_usleep(LP5810_CHIP_ENABLE_DELAY_US);
 		uint8_t value = 0;
 		if (!lp5810_reg_read(dev, LP5810_REG_CHIP_EN, &value)) {
@@ -251,7 +288,7 @@ static bool lp5810_reset(const struct device *dev)
 	lp5810_ll_software_reset(dev);
 
 	bool chip_enabled = false;
-	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
+	for (int32_t i = 0; i < LP5810_NUM_RETRIES; ++i) {
 		if (!lp5810_ll_write_chip_enable(dev, true)) {
 			LOG_WRN("%s: Failed to enable chip", dev->name);
 			continue;
@@ -270,7 +307,7 @@ static bool lp5810_reset(const struct device *dev)
 		LOG_ERR("%s: Could not enable LP5810 chip", dev->name);
 		return false;
 	}
-	for (int i = 0; i < LP5810_NUM_RETRIES; ++i) {
+	for (int32_t i = 0; i < LP5810_NUM_RETRIES; ++i) {
 		lp5810_ll_software_reset(dev);
 		k_usleep(LP5810_CHIP_ENABLE_DELAY_US);
 		if (!lp5810_ll_read_chip_enable(dev, &chip_enabled)) {
@@ -309,14 +346,14 @@ static const char *lp5810_get_lsd_threshold_str(const struct lp5810_config *conf
 
 static bool lp5810_check_status_regs(const struct device *dev)
 {
-	struct lp5810_data *const p_data = dev->data;
+	const struct lp5810_data *const p_data = dev->data;
 
 	const uint8_t led_mask =
 		(0 == p_data->led_mask)
 			? (LP5810_REG_LED_EN_1_VAL_LED_EN_0 | LP5810_REG_LED_EN_1_VAL_LED_EN_1 |
 			   LP5810_REG_LED_EN_1_VAL_LED_EN_2 | LP5810_REG_LED_EN_1_VAL_LED_EN_3)
 			: p_data->led_mask;
-	uint8_t status_regs[LP5810_REG_LSD_STATUS_0 - LP5810_REG_TSD_CONFIG_STATUS + 1] = {0};
+	uint8_t status_regs[(LP5810_REG_LSD_STATUS_0 - LP5810_REG_TSD_CONFIG_STATUS) + 1] = {0};
 	if (!lp5810_buf_read_with_retries(dev, LP5810_REG_TSD_CONFIG_STATUS, status_regs,
 					  sizeof(status_regs))) {
 		LOG_ERR("%s: Failed to read status regs", dev->name);
@@ -385,15 +422,15 @@ static bool lp5810_configure(const struct device *dev)
 		"lsd_action_all_out_shutdown=%d",
 		dev->name, config->lsd_threshold, lp5810_get_lsd_threshold_str(config),
 		config->lod_action_cur_out_shutdown, config->lsd_action_all_out_shutdown);
-	if (!lp5810_reg_write_with_retries(
-		    dev, LP5810_REG_DEV_CONFIG_12,
-		    ((config->lod_action_cur_out_shutdown
-			      ? LP5810_REG_DEV_CONFIG_12_VAL_LOD_ACTION_CUR_OUT_SHUTDOWN
-			      : 0) |
-		     (config->lsd_action_all_out_shutdown
-			      ? LP5810_REG_DEV_CONFIG_12_VAL_LSD_ACTION_ALL_OUT_SHUTDOWN
-			      : 0) |
-		     (config->lsd_threshold & LP5810_REG_DEV_CONFIG_12_VAL_LSD_THRESHOLD_MASK)))) {
+	uint8_t cfg_val = 0;
+	cfg_val |= config->lod_action_cur_out_shutdown
+			   ? LP5810_REG_DEV_CONFIG_12_VAL_LOD_ACTION_CUR_OUT_SHUTDOWN
+			   : 0U;
+	cfg_val |= config->lsd_action_all_out_shutdown
+			   ? LP5810_REG_DEV_CONFIG_12_VAL_LSD_ACTION_ALL_OUT_SHUTDOWN
+			   : 0U;
+	cfg_val |= config->lsd_threshold & LP5810_REG_DEV_CONFIG_12_VAL_LSD_THRESHOLD_MASK;
+	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_DEV_CONFIG_12, cfg_val)) {
 		LOG_ERR("%s: Failed to set LSD_threshold", dev->name);
 		return false;
 	}
@@ -412,19 +449,19 @@ static bool lp5810_configure(const struct device *dev)
 	}
 
 	uint8_t led_en_mask = 0;
-	for (int i = 0; i < config->num_leds; ++i) {
+	for (int32_t i = 0; i < config->num_leds; ++i) {
 		const struct led_info *led_info = &config->leds_info[i];
 		switch (led_info->index) {
-		case 0:
+		case LP5810_LED_IDX_0:
 			led_en_mask |= LP5810_REG_LED_EN_1_VAL_LED_EN_0;
 			break;
-		case 1:
+		case LP5810_LED_IDX_1:
 			led_en_mask |= LP5810_REG_LED_EN_1_VAL_LED_EN_1;
 			break;
-		case 2:
+		case LP5810_LED_IDX_2:
 			led_en_mask |= LP5810_REG_LED_EN_1_VAL_LED_EN_2;
 			break;
-		case 3:
+		case LP5810_LED_IDX_3:
 			led_en_mask |= LP5810_REG_LED_EN_1_VAL_LED_EN_3;
 			break;
 		default:
@@ -479,7 +516,8 @@ static const struct led_info *lp5810_led_to_info(const struct lp5810_config *con
 	return NULL;
 }
 
-static int lp5810_get_info(const struct device *dev, uint32_t led, const struct led_info **p_p_info)
+static int // NOSONAR: Zephyr API
+lp5810_get_info(const struct device *dev, uint32_t led, const struct led_info **p_p_info)
 {
 	const struct lp5810_config *config = dev->config;
 	const struct led_info *const p_led_info = lp5810_led_to_info(config, led);
@@ -493,7 +531,8 @@ static int lp5810_get_info(const struct device *dev, uint32_t led, const struct 
 	return 0;
 }
 
-static int lp5810_set_brightness(const struct device *dev, uint32_t led, uint8_t value)
+static int // NOSONAR: Zephyr API
+lp5810_set_brightness(const struct device *dev, uint32_t led, uint8_t value)
 {
 	const struct lp5810_config *config = dev->config;
 	const struct led_info *const p_led_info = lp5810_led_to_info(config, led);
@@ -503,15 +542,23 @@ static int lp5810_set_brightness(const struct device *dev, uint32_t led, uint8_t
 		return -ENODEV;
 	}
 
+	if (led > config->num_leds) {
+		LOG_ERR("%s: LED index out of bounds: led=%d, max=%d", dev->name, led,
+			config->num_leds - 1);
+		return -EINVAL;
+	}
+
 	if (value > LP5810_MAX_BRIGHTNESS) {
 		LOG_ERR("%s: brightness value out of bounds: val=%d, max=%d", dev->name, value,
 			LP5810_MAX_BRIGHTNESS);
 		return -EINVAL;
 	}
 
+	const lp5810_led_idx_e led_idx = (lp5810_led_idx_e)led;
+
 	lp5810_lock(dev);
-	const uint8_t pwm = (uint8_t)(((uint16_t)value * 0xFFU) / LP5810_MAX_BRIGHTNESS);
-	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_MANUAL_PWM(led), pwm)) {
+	const uint8_t pwm = (uint8_t)(((uint16_t)value * BYTE_MASK) / LP5810_MAX_BRIGHTNESS);
+	if (!lp5810_reg_write_with_retries(dev, lp5810_reg_manual_pwm(led_idx), pwm)) {
 		LOG_ERR("%s: Failed to set PWM for LED %d", dev->name, led);
 		lp5810_unlock(dev);
 		return -EIO;
@@ -520,8 +567,9 @@ static int lp5810_set_brightness(const struct device *dev, uint32_t led, uint8_t
 	return 0;
 }
 
-static int lp5810_set_color(const struct device *dev, uint32_t led, uint8_t num_colors,
-			    const uint8_t *p_colors_buf)
+static int // NOSONAR: Zephyr API
+lp5810_set_color(const struct device *dev, uint32_t led, uint8_t num_colors,
+		 const uint8_t *p_colors_buf)
 {
 	const struct lp5810_config *config = dev->config;
 	const struct led_info *led_info = lp5810_led_to_info(config, led);
@@ -536,8 +584,10 @@ static int lp5810_set_color(const struct device *dev, uint32_t led, uint8_t num_
 		return -EINVAL;
 	}
 
+	const lp5810_led_idx_e led_idx = (lp5810_led_idx_e)led;
+
 	lp5810_lock(dev);
-	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_MANUAL_DC(led), p_colors_buf[0])) {
+	if (!lp5810_reg_write_with_retries(dev, lp5810_reg_manual_dc(led_idx), p_colors_buf[0])) {
 		LOG_ERR("LP5810: Failed to set brightness for LED %d", led);
 		lp5810_unlock(dev);
 		return -EIO;
@@ -546,53 +596,63 @@ static int lp5810_set_color(const struct device *dev, uint32_t led, uint8_t num_
 	return 0;
 }
 
-static int lp5810_write_channels(const struct device *dev, uint32_t start_channel,
-				 uint32_t num_channels, const uint8_t *buf)
+static int // NOSONAR: Zephyr API
+lp5810_write_channels(const struct device *dev, uint32_t start_channel, uint32_t num_channels,
+		      const uint8_t *buf)
 {
 	const struct lp5810_config *const p_config = dev->config;
 
-	if ((start_channel + num_channels) > (2 * p_config->num_leds)) {
+	const uint32_t max_channels = (uint32_t)p_config->num_leds + p_config->num_leds; // DC + PWM
+	if ((start_channel + num_channels) > max_channels) {
 		LOG_ERR("%s: Invalid channel range: start=%d, num=%d, max=%d", dev->name,
-			start_channel, num_channels, p_config->num_leds * 2);
+			start_channel, num_channels, max_channels);
 		return -EINVAL;
 	}
 
 	lp5810_lock(dev);
 
-	const uint8_t num_dc =
-		(start_channel < p_config->num_leds) ? (p_config->num_leds - start_channel) : 0;
-	if (start_channel < p_config->num_leds) {
-		const uint8_t start_dc = start_channel;
-		if (!lp5810_buf_write_with_retries(dev, LP5810_REG_MANUAL_DC(start_dc), &buf[0],
+	const uint8_t start_channel_idx = (uint8_t)start_channel;
+
+	const uint8_t num_dc = (start_channel_idx < p_config->num_leds)
+				       ? (p_config->num_leds - start_channel_idx)
+				       : 0;
+	if (start_channel_idx < p_config->num_leds) {
+		const lp5810_led_idx_e start_dc = (lp5810_led_idx_e)start_channel_idx;
+		if (!lp5810_buf_write_with_retries(dev, lp5810_reg_manual_dc(start_dc), &buf[0],
 						   num_dc)) {
 			LOG_ERR("%s: Failed to write DC channels", dev->name);
 			lp5810_unlock(dev);
 			return -EIO;
 		}
 	}
-	if ((start_channel + num_channels) > p_config->num_leds) {
-		const uint8_t start_pwm = (start_channel >= p_config->num_leds)
-						  ? (start_channel - p_config->num_leds)
-						  : 0;
-		const uint8_t num_pwm = start_channel + num_channels - p_config->num_leds;
-		const uint8_t buf_offset = (start_channel >= p_config->num_leds) ? 0 : num_dc;
-		if (!lp5810_buf_write_with_retries(dev, LP5810_REG_MANUAL_PWM(start_pwm),
+	if ((start_channel_idx + num_channels) > p_config->num_leds) {
+		const lp5810_led_idx_e start_pwm =
+			(lp5810_led_idx_e)((start_channel_idx >= p_config->num_leds)
+						   ? (start_channel_idx - p_config->num_leds)
+						   : 0);
+		const uint8_t num_pwm =
+			(start_channel_idx + (uint8_t)num_channels) - p_config->num_leds;
+		const uint8_t buf_offset = (start_channel_idx >= p_config->num_leds) ? 0 : num_dc;
+		if (!lp5810_buf_write_with_retries(dev, lp5810_reg_manual_pwm(start_pwm),
 						   &buf[buf_offset], num_pwm)) {
 			LOG_ERR("%s: Failed to write PWM channels", dev->name);
 			lp5810_unlock(dev);
 			return -EIO;
 		}
 	}
-	// lp5810_check_status_regs(dev);
+#if 0
+	lp5810_check_status_regs(dev);
+#endif
 	lp5810_unlock(dev);
 	return 0;
 }
 
-static int lp5810_on(const struct device *dev, uint32_t led)
+static int // NOSONAR: Zephyr API
+lp5810_on(const struct device *dev, uint32_t led)
 {
 	lp5810_lock(dev);
-	const uint8_t colors_buf[LP5810_COLORS_PER_LED] = {0xFF};
-	int res = lp5810_set_color(dev, led, sizeof(colors_buf), colors_buf);
+	const uint8_t colors_buf[LP5810_COLORS_PER_LED] = {BYTE_MASK};
+	lp5810_ret_t res = lp5810_set_color(dev, led, sizeof(colors_buf), colors_buf);
 	if (0 != res) {
 		LOG_ERR("lp5810_set_color failed: %d", res);
 		lp5810_unlock(dev);
@@ -608,11 +668,12 @@ static int lp5810_on(const struct device *dev, uint32_t led)
 	return 0;
 }
 
-static int lp5810_off(const struct device *dev, uint32_t led)
+static int // NOSONAR: Zephyr API
+lp5810_off(const struct device *dev, uint32_t led)
 {
 	lp5810_lock(dev);
 	const uint8_t colors_buf[LP5810_COLORS_PER_LED] = {0x00};
-	int res = lp5810_set_color(dev, led, sizeof(colors_buf), colors_buf);
+	lp5810_ret_t res = lp5810_set_color(dev, led, sizeof(colors_buf), colors_buf);
 	if (0 != res) {
 		LOG_ERR("lp5810_set_color failed: %d", res);
 		lp5810_unlock(dev);
@@ -637,7 +698,7 @@ static bool lp5810_hw_enable(const struct device *dev, const bool flag_enable)
 		return true;
 	}
 
-	const int err = gpio_pin_set_dt(&config->gpio_enable, flag_enable);
+	const lp5810_ret_t err = gpio_pin_set_dt(&config->gpio_enable, flag_enable);
 	if (err < 0) {
 		LOG_ERR("%s: failed to set enable gpio", dev->name);
 		return false;
@@ -648,7 +709,8 @@ static bool lp5810_hw_enable(const struct device *dev, const bool flag_enable)
 	return true;
 }
 
-static int lp5810_init(const struct device *dev)
+static int // NOSONAR: Zephyr API
+lp5810_init(const struct device *dev)
 {
 	const struct lp5810_config *config = dev->config;
 
@@ -670,7 +732,8 @@ static int lp5810_init(const struct device *dev)
 			return -ENODEV;
 		}
 
-		int err = gpio_pin_configure_dt(&config->gpio_enable, GPIO_OUTPUT_INACTIVE);
+		lp5810_ret_t err =
+			gpio_pin_configure_dt(&config->gpio_enable, GPIO_OUTPUT_INACTIVE);
 		if (err < 0) {
 			LOG_ERR("%s: failed to initialize enable gpio", dev->name);
 			return err;
@@ -713,7 +776,7 @@ static int lp5810_init(const struct device *dev)
 	return 0;
 }
 
-int lp5810_deinit(const struct device *dev)
+lp5810_ret_t lp5810_deinit(const struct device *dev)
 {
 	const struct lp5810_config *config = dev->config;
 
@@ -732,7 +795,7 @@ int lp5810_deinit(const struct device *dev)
 }
 
 #ifdef CONFIG_PM_DEVICE
-static int lp5810_pm_action(const struct device *dev, enum pm_device_action action)
+static lp5810_ret_t lp5810_pm_action(const struct device *dev, enum pm_device_action action)
 {
 	switch (action) {
 	case PM_DEVICE_ACTION_SUSPEND:
@@ -767,7 +830,7 @@ static const struct led_driver_api lp5810_led_api = {
 		.color_mapping = color_mapping_##led_node_id,                                      \
 	},
 
-#define LP5810_DEVICE(n)                                                                           \
+#define LP5810_DEVICE(n) /* NOSONAR */                                                             \
 	DT_INST_FOREACH_CHILD(n, COLOR_MAPPING)                                                    \
                                                                                                    \
 	static const struct led_info lp5810_leds_##n[] = {DT_INST_FOREACH_CHILD(n, LED_INFO)};     \
@@ -806,12 +869,12 @@ void lp5810_unlock(const struct device *dev)
 	k_mutex_unlock(&p_data->mutex);
 }
 
-int lp5810_read_pwms(const struct device *dev, uint8_t *const p_buf, const size_t buf_len)
+lp5810_ret_t lp5810_read_pwms(const struct device *dev, uint8_t *const p_buf, const size_t buf_len)
 {
 	const struct lp5810_config *const p_config = dev->config;
 	const size_t num_pwms = MIN(buf_len, p_config->num_leds);
 	lp5810_lock(dev);
-	if (!lp5810_buf_read_with_retries(dev, LP5810_REG_MANUAL_PWM(0), p_buf, num_pwms)) {
+	if (!lp5810_buf_read_with_retries(dev, lp5810_reg_manual_pwm(0), p_buf, num_pwms)) {
 		LOG_ERR("%s: Failed to read PWM channels", dev->name);
 		memset(p_buf, 0, buf_len);
 		lp5810_unlock(dev);
@@ -821,12 +884,13 @@ int lp5810_read_pwms(const struct device *dev, uint8_t *const p_buf, const size_
 	return 0;
 }
 
-int lp5810_write_pwms(const struct device *dev, const uint8_t *const p_buf, const size_t buf_len)
+lp5810_ret_t lp5810_write_pwms(const struct device *dev, const uint8_t *const p_buf,
+			       const size_t buf_len)
 {
 	const struct lp5810_config *const p_config = dev->config;
 	const size_t num_pwms = MIN(buf_len, p_config->num_leds);
 	lp5810_lock(dev);
-	if (!lp5810_buf_write_with_retries(dev, LP5810_REG_MANUAL_PWM(0), p_buf, num_pwms)) {
+	if (!lp5810_buf_write_with_retries(dev, lp5810_reg_manual_pwm(0), p_buf, num_pwms)) {
 		LOG_ERR("%s: Failed to write PWM channels", dev->name);
 		lp5810_unlock(dev);
 		return -EIO;
@@ -840,23 +904,30 @@ bool lp5810_auto_animation_enable(const struct device *dev, const uint8_t *const
 {
 	const struct lp5810_config *config = dev->config;
 
-	if (!lp5810_buf_write_with_retries(dev, LP5810_REG_AUTO_DC(0), p_auto_dc_buf, buf_len)) {
+	if (!lp5810_buf_write_with_retries(dev, lp5810_reg_auto_dc(0), p_auto_dc_buf, buf_len)) {
 		LOG_ERR("LP5810: Failed to set LP5810_REG_AUTO_DC");
 		return false;
 	}
 
 	uint8_t led_auto_en_mask = 0;
-	if ((buf_len >= 1) && (config->num_leds >= 1)) {
-		led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_0;
-	}
-	if ((buf_len >= 2) && (config->num_leds >= 2)) {
-		led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_1;
-	}
-	if ((buf_len >= 3) && (config->num_leds >= 3)) {
-		led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_2;
-	}
-	if ((buf_len >= 4) && (config->num_leds >= 4)) {
-		led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_3;
+	for (uint8_t i = 0; i < MIN(buf_len, config->num_leds); ++i) {
+		switch (i) {
+		case LP5810_LED_IDX_0:
+			led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_0;
+			break;
+		case LP5810_LED_IDX_1:
+			led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_1;
+			break;
+		case LP5810_LED_IDX_2:
+			led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_2;
+			break;
+		case LP5810_LED_IDX_3:
+			led_auto_en_mask |= LP5810_REG_DEV_CONFIG_3_VAL_AUTO_EN_3;
+			break;
+		default:
+			LOG_ERR("%s: Invalid LED index %d", dev->name, i);
+			return false;
+		}
 	}
 	if (!lp5810_reg_write_with_retries(dev, LP5810_REG_DEV_CONFIG_3, led_auto_en_mask)) {
 		LOG_ERR("%s: Failed to write LP5810_REG_DEV_CONFIG_3", dev->name);
@@ -869,7 +940,7 @@ bool lp5810_auto_animation_enable(const struct device *dev, const uint8_t *const
 	return true;
 }
 
-bool lp5810_auto_animation_configure(const struct device *dev, const int channel,
+bool lp5810_auto_animation_configure(const struct device *dev, const lp5810_led_idx_e channel,
 				     const lp5810_auto_animation_cfg_t *const p_cfg)
 {
 	const struct lp5810_config *config = dev->config;
@@ -878,7 +949,7 @@ bool lp5810_auto_animation_configure(const struct device *dev, const int channel
 		LOG_ERR("LP5810: Invalid auto animation channel: %d", channel);
 		return false;
 	}
-	if (!lp5810_buf_write_with_retries(dev, LP5810_REG_AUTO_ANIMATION_BASE(channel),
+	if (!lp5810_buf_write_with_retries(dev, lp5810_reg_auto_animation_base(channel),
 					   (const uint8_t *)p_cfg, sizeof(*p_cfg))) {
 		LOG_ERR("LP5810: Failed to set LP5810_REG_AUTO_ANIMATION");
 		return false;

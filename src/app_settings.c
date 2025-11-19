@@ -8,9 +8,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/settings/settings.h>
 #include "utils.h"
+#include "sys_utils.h"
 #include "aqi.h"
 #include "app_fw_ver.h"
 #include "app_version.h"
+#include "zephyr_api.h"
 #include "tlog.h"
 
 LOG_MODULE_REGISTER(app_settings, LOG_LEVEL_INF);
@@ -26,14 +28,12 @@ LOG_MODULE_REGISTER(app_settings, LOG_LEVEL_INF);
 #define APP_SETTINGS_KEY_BT_DIS_FW     "fw"
 #define APP_SETTINGS_KEY_BT_DIS_HW     "hw"
 
-#define APP_SETTINGS_FULL_KEY_BT_DIS(key) APP_SETTINGS_KEY_PREFIX_BT_DIS "/" key
-
-#define APP_SETTINGS_FULL_KEY_BT_DIS_MODEL  APP_SETTINGS_FULL_KEY_BT_DIS(APP_SETTINGS_KEY_BT_DIS_MODEL)
-#define APP_SETTINGS_FULL_KEY_BT_DIS_MANUF  APP_SETTINGS_FULL_KEY_BT_DIS(APP_SETTINGS_KEY_BT_DIS_MANUF)
-#define APP_SETTINGS_FULL_KEY_BT_DIS_SERIAL APP_SETTINGS_FULL_KEY_BT_DIS(APP_SETTINGS_KEY_BT_DIS_SERIAL)
-#define APP_SETTINGS_FULL_KEY_BT_DIS_SW     APP_SETTINGS_FULL_KEY_BT_DIS(APP_SETTINGS_KEY_BT_DIS_SW)
-#define APP_SETTINGS_FULL_KEY_BT_DIS_FW     APP_SETTINGS_FULL_KEY_BT_DIS(APP_SETTINGS_KEY_BT_DIS_FW)
-#define APP_SETTINGS_FULL_KEY_BT_DIS_HW     APP_SETTINGS_FULL_KEY_BT_DIS(APP_SETTINGS_KEY_BT_DIS_HW)
+#define APP_SETTINGS_FULL_KEY_BT_DIS_MODEL  APP_SETTINGS_KEY_PREFIX_BT_DIS "/" APP_SETTINGS_KEY_BT_DIS_MODEL
+#define APP_SETTINGS_FULL_KEY_BT_DIS_MANUF  APP_SETTINGS_KEY_PREFIX_BT_DIS "/" APP_SETTINGS_KEY_BT_DIS_MANUF
+#define APP_SETTINGS_FULL_KEY_BT_DIS_SERIAL APP_SETTINGS_KEY_PREFIX_BT_DIS "/" APP_SETTINGS_KEY_BT_DIS_SERIAL
+#define APP_SETTINGS_FULL_KEY_BT_DIS_SW     APP_SETTINGS_KEY_PREFIX_BT_DIS "/" APP_SETTINGS_KEY_BT_DIS_SW
+#define APP_SETTINGS_FULL_KEY_BT_DIS_FW     APP_SETTINGS_KEY_PREFIX_BT_DIS "/" APP_SETTINGS_KEY_BT_DIS_FW
+#define APP_SETTINGS_FULL_KEY_BT_DIS_HW     APP_SETTINGS_KEY_PREFIX_BT_DIS "/" APP_SETTINGS_KEY_BT_DIS_HW
 
 #define APP_SETTINGS_KEY_PREFIX_APP                 "app"
 #define APP_SETTINGS_KEY_SEN66_VOC_ALGORITHM_STATE  "sen66/voc_algorithm_state"
@@ -80,27 +80,27 @@ static app_settings_sen66_voc_algorithm_state_t g_sen66_voc_algorithm_state = {
 };
 K_MUTEX_DEFINE(g_sen66_voc_algorithm_state_mutex);
 
-enum app_settings_led_mode                 g_led_mode                     = APP_SETTINGS_LED_MODE_MANUAL_DAY;
+enum app_settings_led_mode_e               g_led_mode                     = APP_SETTINGS_LED_MODE_MANUAL_DAY;
 app_settings_led_brightness_deci_percent_t g_led_mode_manual_deci_percent = APP_SETTINGS_LED_BRIGHTNESS_DAY_VALUE * 10;
 
 static bool
 check_is_buf_printable(const uint8_t* const p_buf, const ssize_t len)
 {
-    for (ssize_t i = 0; i < len - 1; i++)
+    for (ssize_t i = 0; i < (len - 1); ++i)
     {
-        if ((p_buf[i] == '\0') || (!isprint((int)p_buf[i])))
+        if (('\0' == p_buf[i]) || (0 == isprint((int)p_buf[i])))
         {
             return false;
         }
     }
-    if ((p_buf[len - 1] != '\0') && (!isprint((int)p_buf[len - 1])))
+    if ((p_buf[len - 1] != '\0') && (0 == isprint((int)p_buf[len - 1])))
     {
         return false;
     }
     return true;
 }
 
-static int
+static int // NOSONAR: Zephyr API
 cb_direct_handle_keys(const char* key, size_t len, settings_read_cb read_cb, void* cb_arg, void* param)
 {
     ARG_UNUSED(param);
@@ -161,14 +161,14 @@ get_device_id_str(void)
             device_id_str.serial_number,
             sizeof(device_id_str.serial_number),
             "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-            (uint8_t)(device_id >> 56) & 0xFF,
-            (uint8_t)(device_id >> 48) & 0xFF,
-            (uint8_t)(device_id >> 40) & 0xFF,
-            (uint8_t)(device_id >> 32) & 0xFF,
-            (uint8_t)(device_id >> 24) & 0xFF,
-            (uint8_t)(device_id >> 16) & 0xFF,
-            (uint8_t)(device_id >> 8) & 0xFF,
-            (uint8_t)(device_id >> 0) & 0xFF);
+            (uint8_t)(device_id >> BYTE_SHIFT_7) & BYTE_MASK,
+            (uint8_t)(device_id >> BYTE_SHIFT_6) & BYTE_MASK,
+            (uint8_t)(device_id >> BYTE_SHIFT_5) & BYTE_MASK,
+            (uint8_t)(device_id >> BYTE_SHIFT_4) & BYTE_MASK,
+            (uint8_t)(device_id >> BYTE_SHIFT_3) & BYTE_MASK,
+            (uint8_t)(device_id >> BYTE_SHIFT_2) & BYTE_MASK,
+            (uint8_t)(device_id >> BYTE_SHIFT_1) & BYTE_MASK,
+            (uint8_t)(device_id >> BYTE_SHIFT_0) & BYTE_MASK);
     }
     else
     {
@@ -256,7 +256,7 @@ static void
 app_settings_save_key(const char* const p_key, const char* const p_val, const size_t val_len)
 {
     LOG_INF("Saving key: %s=%.*s", p_key, (int)val_len, p_val);
-    const int err = settings_save_one(p_key, p_val, val_len);
+    const zephyr_api_ret_t err = settings_save_one(p_key, p_val, val_len);
     if (0 != err)
     {
         TLOG_ERR("settings_save_one failed for key '%s': %d", p_key, err);
@@ -268,7 +268,7 @@ app_settings_save_bin_key(const char* const p_key, const uint8_t* const p_val, c
 {
     LOG_INF("Saving key: %s", p_key);
     LOG_HEXDUMP_INF(p_val, val_len, "    value(hex):");
-    const int err = settings_save_one(p_key, p_val, val_len);
+    const zephyr_api_ret_t err = settings_save_one(p_key, p_val, val_len);
     if (0 != err)
     {
         TLOG_ERR("settings_save_one failed for key '%s': %d", p_key, err);
@@ -279,7 +279,7 @@ static void
 app_settings_delete_key(const char* const p_key)
 {
     LOG_INF("Deleting key: %s", p_key);
-    const int err = settings_delete(p_key);
+    const zephyr_api_ret_t err = settings_delete(p_key);
     if (0 != err)
     {
         TLOG_ERR("settings_delete failed for key '%s': %d", p_key, err);
@@ -290,7 +290,7 @@ bool
 app_settings_init(void)
 {
     g_sen66_voc_algorithm_state = (app_settings_sen66_voc_algorithm_state_t){
-        .unix_timestamp = time(NULL),
+        .unix_timestamp = (uint32_t)time(NULL),
         .state = {
             .voc_state = APP_SETTINGS_SEN66_VOC_ALGORITHM_STATE_DEFAULT,
         },
@@ -305,7 +305,7 @@ app_settings_init(void)
 
     settings_subsys_init();
     TLOG_INF("Loading settings from backend...");
-    int err = settings_load();
+    zephyr_api_ret_t err = settings_load();
     if (0 != err)
     {
         TLOG_ERR("Settings loading failed: %d", err);
@@ -363,11 +363,17 @@ app_settings_init(void)
         app_settings_save_key(APP_SETTINGS_FULL_KEY_BT_DIS_HW, p_hw_rev, strlen(p_hw_rev) + 1);
     }
 #endif
-    if (!g_flag_bt_dis_model_set || !g_flag_bt_dis_manuf_set || !g_flag_bt_dis_serial_set || !g_flag_bt_dis_sw_set
-        || !g_flag_bt_dis_fw_set || !g_flag_bt_dis_hw_set)
+    bool flag_reload_settings = false;
+    flag_reload_settings      = flag_reload_settings || (!g_flag_bt_dis_model_set);
+    flag_reload_settings      = flag_reload_settings || (!g_flag_bt_dis_manuf_set);
+    flag_reload_settings      = flag_reload_settings || (!g_flag_bt_dis_serial_set);
+    flag_reload_settings      = flag_reload_settings || (!g_flag_bt_dis_sw_set);
+    flag_reload_settings      = flag_reload_settings || (!g_flag_bt_dis_fw_set);
+    flag_reload_settings      = flag_reload_settings || (!g_flag_bt_dis_hw_set);
+    if (flag_reload_settings)
     {
         // Reload settings to update in-memory values for BLE subsystem.
-        int err = settings_load();
+        err = settings_load();
         if (0 != err)
         {
             TLOG_ERR("Settings loading failed: %d", err);
@@ -377,7 +383,7 @@ app_settings_init(void)
     return true;
 }
 
-enum app_settings_led_mode
+enum app_settings_led_mode_e
 app_settings_get_led_mode(void)
 {
     return g_led_mode;
@@ -395,7 +401,7 @@ app_settings_conv_deci_percent_to_brightness(
     uint8_t* const                                   p_dim_pwm)
 {
     const uint8_t led_brightness_min   = APP_SETTINGS_LED_BRIGHTNESS_NIGHT_VALUE;
-    const uint8_t led_brightness_max   = 255U;
+    const uint8_t led_brightness_max   = RGB_LED_BRIGHTNESS_MAX;
     const uint8_t led_brightness_range = (uint8_t)(led_brightness_max - led_brightness_min);
 
     rgb_led_brightness_t led_brightness = 0;
@@ -404,22 +410,22 @@ app_settings_conv_deci_percent_to_brightness(
     if (g_led_mode_manual_deci_percent < APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT)
     {
         led_brightness = led_brightness_min;
-        dim_pwm        = (uint8_t)((255 * brightness_deci_percent
-                             + (APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT / 2))
+        dim_pwm        = (uint8_t)(((RGB_LED_PWM_MAX * brightness_deci_percent)
+                             + (APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT / ROUND_HALF_DIVISOR))
                             / APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT);
     }
     else
     {
         const uint32_t brightness_min_deci_percent   = APP_SETTINGS_LED_MANUAL_PERCENTAGE_PWM_LIMIT_DECI_PERCENT;
-        const uint32_t brightness_max_deci_percent   = 100 * 10;
+        const uint32_t brightness_max_deci_percent   = PERCENT_100 * DECI_PERCENT_PER_PERCENT;
         const uint32_t brightness_range_deci_percent = brightness_max_deci_percent - brightness_min_deci_percent;
 
-        led_brightness = (rgb_led_brightness_t)(((brightness_deci_percent - brightness_min_deci_percent)
-                                                     * led_brightness_range
-                                                 + (brightness_range_deci_percent / 2))
-                                                    / brightness_range_deci_percent
+        led_brightness = (rgb_led_brightness_t)(((((brightness_deci_percent - brightness_min_deci_percent)
+                                                   * led_brightness_range)
+                                                  + (brightness_range_deci_percent / ROUND_HALF_DIVISOR))
+                                                 / brightness_range_deci_percent)
                                                 + led_brightness_min);
-        dim_pwm        = 255;
+        dim_pwm        = RGB_LED_PWM_MAX;
     }
     if (NULL != p_dim_pwm)
     {
@@ -465,7 +471,7 @@ app_settings_is_led_mode_auto(void)
 }
 
 void
-app_settings_set_led_mode(const enum app_settings_led_mode mode)
+app_settings_set_led_mode(const enum app_settings_led_mode_e mode)
 {
     g_led_mode = mode;
     TLOG_INF("LED mode set to %d", g_led_mode);
@@ -575,23 +581,28 @@ app_settings_reset_led_color_table(manual_brightness_level_e brightness_level)
 static bool
 parse_deci_percent(const char* const p_str, app_settings_led_brightness_deci_percent_t* const p_deci_percent)
 {
-    char*         p_end    = NULL;
-    unsigned long int_part = strtoul(p_str, &p_end, 10);
-    if (NULL != p_end)
+    char*    p_end    = NULL;
+    uint32_t int_part = strtoul(p_str, &p_end, BASE_10);
+    if (NULL == p_end)
     {
-        if (('%' == *p_end) && (int_part <= 100))
+        return false;
+    }
+    if (('%' == *p_end) && (int_part <= PERCENT_100))
+    {
+        *p_deci_percent = (app_settings_led_brightness_deci_percent_t)(int_part * DECI_PERCENT_PER_PERCENT);
+        return true;
+    }
+    if ('.' == *p_end)
+    {
+        const char* p_frac = p_end + 1;
+        p_end              = NULL;
+        uint32_t frac_part = strtoul(p_frac, &p_end, BASE_10);
+        if ((NULL != p_end) && ('%' == *p_end) && (int_part <= PERCENT_100) && (frac_part < BASE_10))
         {
-            *p_deci_percent = (app_settings_led_brightness_deci_percent_t)(int_part * 10);
-            return true;
-        }
-        if ('.' == *p_end)
-        {
-            const char* p_frac      = p_end + 1;
-            p_end                   = NULL;
-            unsigned long frac_part = strtoul(p_frac, &p_end, 10);
-            if ((NULL != p_end) && ('%' == *p_end) && (int_part <= 100) && (frac_part <= 9))
+            const uint32_t deci_percent = (int_part * DECI_PERCENT_PER_PERCENT) + frac_part;
+            if (deci_percent <= (PERCENT_100 * DECI_PERCENT_PER_PERCENT))
             {
-                *p_deci_percent = (app_settings_led_brightness_deci_percent_t)(int_part * 10 + frac_part);
+                *p_deci_percent = (app_settings_led_brightness_deci_percent_t)deci_percent;
                 return true;
             }
         }
@@ -612,8 +623,8 @@ app_settings_set_led_mode_manual_percentage(const char* const p_str_brightness_d
     TLOG_INF(
         "LED mode set to %d (APP_SETTINGS_LED_MODE_MANUAL_PERCENTAGE), brightness=%u.%01u",
         g_led_mode,
-        brightness_deci_percent / 10,
-        brightness_deci_percent % 10);
+        brightness_deci_percent / DECI_PERCENT_PER_PERCENT,
+        brightness_deci_percent % DECI_PERCENT_PER_PERCENT);
     app_settings_save_key(
         APP_SETTINGS_KEY_PREFIX_APP "/" APP_SETTINGS_KEY_LED_BRIGHTNESS,
         p_str_brightness_deci_percent,
@@ -756,7 +767,7 @@ app_settings_handler_set_led_color_table(
     ssize_t                         buf_len)
 {
     app_settings_log_key(p_key, p_buf, buf_len, true);
-    settings_raw_color_table_t* p_raw_table = (settings_raw_color_table_t*)p_buf;
+    const settings_raw_color_table_t* const p_raw_table = (const settings_raw_color_table_t*)p_buf;
     if (buf_len != sizeof(p_raw_table->data))
     {
         TLOG_WRN(
@@ -825,7 +836,7 @@ app_settings_handler_set_led_color_table(
         table.colors[AIR_QUALITY_INDEX_VERY_POOR].blue);
 }
 
-static int
+static int // NOSONAR: Zephyr API
 app_settings_handler_set(const char* key, size_t len, settings_read_cb read_cb, void* cb_arg)
 {
     char buf[APP_SETTINGS_MAX_VAL_LEN];
@@ -878,7 +889,7 @@ app_settings_handler_set(const char* key, size_t len, settings_read_cb read_cb, 
 }
 
 /* Optional commit callback, called after settings_load() completes */
-static int
+static int // NOSONAR: Zephyr API
 app_settings_handler_commit(void)
 {
     LOG_DBG("app/ settings committed");

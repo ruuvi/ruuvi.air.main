@@ -6,7 +6,7 @@
 #define DSP_RMS_H
 
 #include <stdint.h>
-#include "arm_math.h"
+#include <zephyr/dsp/types.h>
 
 #ifdef __cplusplus
 extern "C" {

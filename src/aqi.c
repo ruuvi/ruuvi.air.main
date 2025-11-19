@@ -5,12 +5,18 @@
 #include "aqi.h"
 #include <math.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys_clock.h>
+#include "sys_utils.h"
 #include "rgb_led_types.h"
 #include "opt_rgb_ctrl.h"
 #include "app_settings.h"
 #include "tlog.h"
 
 LOG_MODULE_REGISTER(AQI, LOG_LEVEL_INF);
+
+#define INITIAL_BOOTUP_LED_FADING_DURATION_SEC (30U)
+
+#define MIN_AQI_LED_AUTO_BRIGHTNESS_DIM_PWM (20U)
 
 #define AQI_MAX_LUMINOSITY          (2000.0f)
 #define AQI_LED_MAX_AUTO_BRIGHTNESS (CONFIG_RUUVI_AIR_LED_BRIGHTNESS)
@@ -24,9 +30,9 @@ LOG_MODULE_REGISTER(AQI, LOG_LEVEL_INF);
 
 #define AQI_LED_EXP_CURRENTS_DURATION_MS (1000)
 
-static float g_aqi_luminosity_ema = 200.0f;
+static float32_t g_aqi_luminosity_ema = 200.0f;
 
-static float               g_air_quality_index   = NAN;
+static float32_t           g_air_quality_index   = NAN;
 static air_quality_index_e g_aqi_led             = AIR_QUALITY_INDEX_EXCELLENT;
 static int64_t             g_aqi_led_last_update = 0;
 static bool                g_aqi_become_valid    = false;
@@ -149,7 +155,7 @@ aqi_init_exp_current_coef(
     p_coef->current_min = current_min;
     p_coef->current_max = current_max;
     p_coef->duration_ms = duration_ms;
-    p_coef->alpha       = logf(current_max - current_min + 1.0f) / k_ms_to_ticks_ceil32(duration_ms);
+    p_coef->alpha       = logf((current_max - current_min) + 1.0f) / (float32_t)k_ms_to_ticks_ceil32(duration_ms);
 }
 
 void
@@ -179,7 +185,7 @@ aqi_get_led_currents_alpha(void)
 }
 
 static air_quality_index_e
-aqi_calculate_index(const float air_quality_index)
+aqi_calculate_index(const float32_t air_quality_index)
 {
     if (isnan(air_quality_index))
     {
@@ -208,32 +214,32 @@ aqi_calculate_index(const float air_quality_index)
 }
 
 void
-aqi_recalc_auto_brightness_level(const float luminosity)
+aqi_recalc_auto_brightness_level(const float32_t luminosity)
 {
-    float coef = NAN;
-    if (!isnan(luminosity))
+    float32_t coef = NAN;
+    if (!(bool)isnan(luminosity))
     {
-        const float luminosity_limited = (luminosity < AQI_MAX_LUMINOSITY) ? luminosity : AQI_MAX_LUMINOSITY;
-        g_aqi_luminosity_ema = AQI_EMA_ALPHA * luminosity_limited + (1.0f - AQI_EMA_ALPHA) * g_aqi_luminosity_ema;
-        const float e        = expf(1.0f);
+        const float32_t luminosity_limited = (luminosity < AQI_MAX_LUMINOSITY) ? luminosity : AQI_MAX_LUMINOSITY;
+        g_aqi_luminosity_ema = (AQI_EMA_ALPHA * luminosity_limited) + ((1.0f - AQI_EMA_ALPHA) * g_aqi_luminosity_ema);
+        const float32_t e    = expf(1.0f);
         coef                 = (logf(e + g_aqi_luminosity_ema) - 1) / logf(e + AQI_MAX_LUMINOSITY);
         if (coef > 0.2f)
         {
             g_aqi_led_auto_brightness_level   = (uint8_t)roundf(AQI_LED_MAX_AUTO_BRIGHTNESS * coef);
-            g_aqi_led_auto_brightness_dim_pwm = 255;
+            g_aqi_led_auto_brightness_dim_pwm = RGB_LED_PWM_MAX;
         }
         else if (coef > 0.02f)
         {
             g_aqi_led_auto_brightness_level   = (uint8_t)roundf(AQI_LED_MAX_AUTO_BRIGHTNESS * 0.2f);
-            g_aqi_led_auto_brightness_dim_pwm = (uint8_t)roundf(255 * (coef / 0.2f));
+            g_aqi_led_auto_brightness_dim_pwm = (uint8_t)roundf(RGB_LED_PWM_MAX * (coef / 0.2f));
         }
         else
         {
             g_aqi_led_auto_brightness_level   = (uint8_t)roundf(AQI_LED_MAX_AUTO_BRIGHTNESS * 0.1f);
-            g_aqi_led_auto_brightness_dim_pwm = (uint8_t)roundf(255 * (coef / 0.1f));
-            if (g_aqi_led_auto_brightness_dim_pwm < 20)
+            g_aqi_led_auto_brightness_dim_pwm = (uint8_t)roundf(RGB_LED_PWM_MAX * (coef / 0.1f));
+            if (g_aqi_led_auto_brightness_dim_pwm < MIN_AQI_LED_AUTO_BRIGHTNESS_DIM_PWM)
             {
-                g_aqi_led_auto_brightness_dim_pwm = 20;
+                g_aqi_led_auto_brightness_dim_pwm = MIN_AQI_LED_AUTO_BRIGHTNESS_DIM_PWM;
             }
         }
     }
@@ -245,9 +251,12 @@ aqi_update_led_auto(const air_quality_index_e aqi_idx)
     const rgb_led_color_t* const p_led_color = &g_aqi_auto_led_colors_table[aqi_idx];
 
     const rgb_led_color_t led_color = {
-        .red   = (uint8_t)(((uint32_t)p_led_color->red * g_aqi_led_auto_brightness_dim_pwm) / 255U),
-        .green = (uint8_t)(((uint32_t)p_led_color->green * g_aqi_led_auto_brightness_dim_pwm) / 255U),
-        .blue  = (uint8_t)(((uint32_t)p_led_color->blue * g_aqi_led_auto_brightness_dim_pwm) / 255U),
+        .red   = (rgb_led_color_val_t)(((uint32_t)p_led_color->red * g_aqi_led_auto_brightness_dim_pwm)
+                                     / RGB_LED_PWM_MAX),
+        .green = (rgb_led_color_val_t)(((uint32_t)p_led_color->green * g_aqi_led_auto_brightness_dim_pwm)
+                                       / RGB_LED_PWM_MAX),
+        .blue  = (rgb_led_color_val_t)(((uint32_t)p_led_color->blue * g_aqi_led_auto_brightness_dim_pwm)
+                                      / RGB_LED_PWM_MAX),
     };
 
     LOG_INF(
@@ -280,16 +289,16 @@ aqi_update_led_manual_percentage(
         &dim_pwm);
 
     const rgb_led_color_t led_color = {
-        .red   = (uint8_t)(((uint32_t)p_led_color->red * dim_pwm) / 255U),
-        .green = (uint8_t)(((uint32_t)p_led_color->green * dim_pwm) / 255U),
-        .blue  = (uint8_t)(((uint32_t)p_led_color->blue * dim_pwm) / 255U),
+        .red   = (uint8_t)(((uint32_t)p_led_color->red * dim_pwm) / RGB_LED_PWM_MAX),
+        .green = (uint8_t)(((uint32_t)p_led_color->green * dim_pwm) / RGB_LED_PWM_MAX),
+        .blue  = (uint8_t)(((uint32_t)p_led_color->blue * dim_pwm) / RGB_LED_PWM_MAX),
     };
 
     LOG_INF(
         "AQI=%d, brightness: %u.%01u%%, dim: %d, set colors: <%d, %d, %d> -> <%d, %d, %d>",
         g_aqi_led,
-        brightness_deci_percent / 10,
-        brightness_deci_percent % 10,
+        brightness_deci_percent / DECI_PERCENT_PER_PERCENT,
+        brightness_deci_percent % DECI_PERCENT_PER_PERCENT,
         dim_pwm,
         p_led_color->red,
         p_led_color->green,
@@ -317,7 +326,7 @@ aqi_update_led_manual(const manual_brightness_level_e brightness_level, const ai
 }
 
 void
-aqi_update_led(const float air_quality_index)
+aqi_update_led(const float32_t air_quality_index)
 {
     g_aqi_led_last_update = k_uptime_get();
     g_aqi_led             = aqi_calculate_index(air_quality_index);
@@ -344,7 +353,8 @@ aqi_refresh_led(void)
         }
         else
         {
-            if ((g_aqi_led_last_update - g_aqi_started_timestamp) > (30 * 1000))
+            if ((g_aqi_led_last_update - g_aqi_started_timestamp)
+                > (INITIAL_BOOTUP_LED_FADING_DURATION_SEC * MSEC_PER_SEC))
             {
                 flag_stop_bootup_fading = true;
             }
@@ -355,7 +365,7 @@ aqi_refresh_led(void)
         }
     }
 
-    const enum app_settings_led_mode led_mode = app_settings_get_led_mode();
+    const enum app_settings_led_mode_e led_mode = app_settings_get_led_mode();
     switch (led_mode)
     {
         case APP_SETTINGS_LED_MODE_DISABLED:

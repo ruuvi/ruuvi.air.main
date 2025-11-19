@@ -64,4 +64,5 @@ else
     --define sonar.cfamily.threads=$(nproc)
   rm -f coverage.xml
   rm -rf build-sonar
+  rm -rf .scannerwork
 fi

@@ -71,7 +71,7 @@ void sensirion_i2c_hal_free(void);
  * @param count   number of bytes to read from I2C and store in the buffer
  * @returns 0 on success, error code otherwise
  */
-int8_t sensirion_i2c_hal_read(uint8_t address, uint8_t* data, uint8_t count);
+int16_t sensirion_i2c_hal_read(uint8_t address, uint8_t* data, uint8_t count);
 
 /**
  * Execute one write transaction on the I2C bus, sending a given number of
@@ -84,8 +84,8 @@ int8_t sensirion_i2c_hal_read(uint8_t address, uint8_t* data, uint8_t count);
  * @param count   number of bytes to read from the buffer and send over I2C
  * @returns 0 on success, error code otherwise
  */
-int8_t sensirion_i2c_hal_write(uint8_t address, const uint8_t* data,
-                               uint8_t count);
+int16_t sensirion_i2c_hal_write(uint8_t address, const uint8_t* data,
+                                uint8_t count);
 
 /**
  * Sleep for a given number of microseconds. The function should delay the

@@ -128,6 +128,8 @@ target_sources(app PRIVATE
         src/moving_avg.h
         src/opt_rgb_ctrl.c
         src/opt_rgb_ctrl.h
+        src/opt_rgb_ctrl_auto.c
+        src/opt_rgb_ctrl_auto.h
         src/rgb_led.c
         src/rgb_led.h
         src/rgb_led_types.h

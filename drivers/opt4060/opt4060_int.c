@@ -19,7 +19,7 @@ static void opt4060_thread_cb(const struct device *const p_dev)
 	opt4060_read_all_channels(p_dev);
 
 #if CONFIG_OPT4060_TRIGGER
-	struct opt4060_data *const p_data = p_dev->data;
+	opt4060_data_t *const p_data = p_dev->data;
 	if (NULL != p_data->handler_drdy) {
 		p_data->handler_drdy(p_dev, p_data->p_trig_drdy);
 	}
@@ -32,7 +32,7 @@ static void opt4060_thread(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
 
-	struct opt4060_data *const p_data = p1;
+	opt4060_data_t *const p_data = p1;
 
 	while (1) {
 		k_sem_take(&p_data->gpio_sem, K_FOREVER);
@@ -44,7 +44,7 @@ static void opt4060_thread(void *p1, void *p2, void *p3)
 #ifdef CONFIG_OPT4060_INT_GLOBAL_THREAD
 static void opt4060_work_cb(struct k_work *const p_work)
 {
-	struct opt4060_data *const p_data = CONTAINER_OF(p_work, struct opt4060_data, work);
+	opt4060_data_t *const p_data = CONTAINER_OF(p_work, opt4060_data_t, work);
 
 	opt4060_thread_cb(p_data->p_dev);
 }
@@ -53,7 +53,7 @@ static void opt4060_work_cb(struct k_work *const p_work)
 static void opt4060_gpio_int_callback(const struct device *const p_dev,
 				      struct gpio_callback *const p_cb, const uint32_t pins)
 {
-	struct opt4060_data *const p_data = CONTAINER_OF(p_cb, struct opt4060_data, gpio_int_cb);
+	opt4060_data_t *const p_data = CONTAINER_OF(p_cb, opt4060_data_t, gpio_int_cb);
 
 	ARG_UNUSED(pins);
 
@@ -64,10 +64,10 @@ static void opt4060_gpio_int_callback(const struct device *const p_dev,
 #endif
 }
 
-int opt4060_init_interrupt(const struct device *p_dev)
+opt4060_ret_t opt4060_init_interrupt(const struct device *p_dev)
 {
-	struct opt4060_data *const p_data = p_dev->data;
-	const struct opt4060_config *const p_cfg = p_dev->config;
+	opt4060_data_t *const p_data = p_dev->data;
+	const opt4060_config_t *const p_cfg = p_dev->config;
 
 	p_data->p_dev = p_dev;
 

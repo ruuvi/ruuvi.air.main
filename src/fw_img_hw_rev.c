@@ -9,8 +9,31 @@
 #include <bootutil/bootutil_public.h>
 #include <fw_info.h>
 #include <zephyr/logging/log.h>
+#include "zephyr_api.h"
 
 LOG_MODULE_DECLARE(main, LOG_LEVEL_INF);
+
+#if !defined(BITS_PER_BYTE)
+#define BITS_PER_BYTE (8U)
+#else
+_Static_assert(BITS_PER_BYTE == 8U, "BITS_PER_BYTE != 8"); // NOSONAR
+#endif
+
+#define U32_BYTE3_SHIFT 24U
+#define U32_BYTE2_SHIFT 16U
+#define U32_BYTE1_SHIFT 8U
+#define U32_BYTE0_SHIFT 0U
+
+static inline uint32_t
+u32_from_bytes_be(const uint8_t* const p_buf)
+{
+    uint32_t res = 0;
+    for (uint32_t i = 0; i < sizeof(uint32_t); ++i)
+    {
+        res |= ((uint32_t)p_buf[i] << (U32_BYTE3_SHIFT - (i * BITS_PER_BYTE)));
+    }
+    return res;
+}
 
 static bool
 find_tlvs_in_flash_area(
@@ -22,7 +45,7 @@ find_tlvs_in_flash_area(
 {
     struct image_tlv_info tlv_info = { 0 };
 
-    int rc = flash_area_read(p_fa, start_offset, &tlv_info, sizeof(tlv_info));
+    zephyr_api_ret_t rc = flash_area_read(p_fa, start_offset, &tlv_info, sizeof(tlv_info));
     if (0 != rc)
     {
         LOG_ERR("Failed to read TLV info from flash area %d, rc=%d", p_fa->fa_id, rc);
@@ -52,7 +75,7 @@ find_tlvs_in_file(
 {
     struct image_tlv_info tlv_info = { 0 };
 
-    int rc = fs_seek(p_file, start_offset, FS_SEEK_SET);
+    zephyr_api_ret_t rc = fs_seek(p_file, start_offset, FS_SEEK_SET);
     if (0 != rc)
     {
         LOG_ERR("Failed to seek to the beginning of the image TLVs, rc=%d", rc);
@@ -78,27 +101,87 @@ find_tlvs_in_file(
     return true;
 }
 
-bool
-fw_img_hw_rev_find_in_flash_area(const int fa_id, fw_image_hw_rev_t* const p_hw_rev)
+static bool
+fw_img_hw_rev_handle_tlv_hw_rev_in_flash_area(
+    const struct image_tlv* const p_tlv,
+    const fa_id_t                 fa_id,
+    const struct flash_area*      p_fa,
+    const size_t                  data_off,
+    fw_image_hw_rev_t* const      p_hw_rev)
 {
-    bool                     is_success = false;
-    const struct flash_area* p_fa       = NULL;
-
-    p_hw_rev->hw_rev_num     = 0;
-    p_hw_rev->hw_rev_name[0] = '\0';
-
-    int rc = flash_area_open(fa_id, &p_fa);
-    if (0 != rc)
+    if (IMAGE_TLV_RUUVI_HW_REV_ID == p_tlv->it_type)
     {
-        LOG_ERR("Failed to open flash area %d, rc=%d", fa_id, rc);
-        return false;
+        if (p_tlv->it_len != sizeof(p_hw_rev->hw_rev_num))
+        {
+            LOG_ERR(
+                "Invalid Ruuvi HW revision ID TLV length %u in flash area %d, expected %zu",
+                p_tlv->it_len,
+                fa_id,
+                sizeof(p_hw_rev->hw_rev_num));
+            return false;
+        }
+        if (0 != p_hw_rev->hw_rev_num)
+        {
+            LOG_ERR("Duplicate Ruuvi HW revision ID TLV in flash area %d", fa_id);
+            return false;
+        }
+
+        uint8_t buf[sizeof(p_hw_rev->hw_rev_num)] = { 0 };
+
+        const zephyr_api_ret_t rc = flash_area_read(p_fa, data_off + sizeof(*p_tlv), buf, sizeof(buf));
+        if (0 != rc)
+        {
+            LOG_ERR("Failed to read TLV from flash area %d, rc=%d", fa_id, rc);
+            return false;
+        }
+        p_hw_rev->hw_rev_num = u32_from_bytes_be(buf);
+        LOG_DBG("Found Ruuvi HW revision ID TLV in flash area %d: ID=%" PRIu32, fa_id, p_hw_rev->hw_rev_num);
     }
+    if (IMAGE_TLV_RUUVI_HW_REV_NAME == p_tlv->it_type)
+    {
+        if (p_tlv->it_len >= sizeof(p_hw_rev->hw_rev_name))
+        {
+            LOG_ERR(
+                "Invalid Ruuvi HW revision name TLV length %u in flash area %d, expected %zu",
+                p_tlv->it_len,
+                fa_id,
+                sizeof(p_hw_rev->hw_rev_name));
+            return false;
+        }
+        if ('\0' != p_hw_rev->hw_rev_name[0])
+        {
+            LOG_ERR("Duplicate Ruuvi HW revision name TLV in flash area %d", fa_id);
+            return false;
+        }
+        const zephyr_api_ret_t rc = flash_area_read(
+            p_fa,
+            data_off + sizeof(*p_tlv),
+            p_hw_rev->hw_rev_name,
+            p_tlv->it_len);
+        if (0 != rc)
+        {
+            LOG_ERR("Failed to read TLV from flash area %d, rc=%d", fa_id, rc);
+            return false;
+        }
+        p_hw_rev->hw_rev_name[p_tlv->it_len] = '\0';
+        LOG_DBG("Found Ruuvi HW revision name TLV in flash area %d: name='%s'", fa_id, p_hw_rev->hw_rev_name);
+    }
+    return true;
+}
 
-    struct image_header img_hdr = { 0 };
-    rc                          = boot_image_load_header(p_fa, &img_hdr);
+bool
+fw_img_hw_rev_find_in_flash_area_internal(
+    const fa_id_t                  fa_id,
+    const struct flash_area* const p_fa,
+    fw_image_hw_rev_t* const       p_hw_rev)
+{
+    bool                is_success = false;
+    struct image_header img_hdr    = { 0 };
+
+    zephyr_api_ret_t rc = boot_image_load_header(p_fa, &img_hdr);
     if (0 != rc)
     {
-        goto func_exit;
+        return false;
     }
 
     /* Read the image's TLVs. Try to find the protected TLVs. */
@@ -111,76 +194,24 @@ fw_img_hw_rev_find_in_flash_area(const int fa_id, fw_image_hw_rev_t* const p_hw_
             &tlvs_start_off,
             &tlvs_end_off))
     {
-        goto func_exit;
+        return false;
     }
 
     size_t data_off = tlvs_start_off;
 
     struct image_tlv tlv = { 0 };
-    while (data_off + sizeof(tlv) <= tlvs_end_off)
+    while ((data_off + sizeof(tlv)) <= tlvs_end_off)
     {
         rc = flash_area_read(p_fa, data_off, &tlv, sizeof(tlv));
         if (0 != rc)
         {
             LOG_ERR("Failed to read TLV from flash area %d, rc=%d", fa_id, rc);
-            goto func_exit;
+            break;
         }
 
-        if (tlv.it_type == 0xff && tlv.it_len == 0xffff)
+        if (!fw_img_hw_rev_handle_tlv_hw_rev_in_flash_area(&tlv, fa_id, p_fa, data_off, p_hw_rev))
         {
-            LOG_ERR("Invalid TLV in flash area %d", fa_id);
-            goto func_exit;
-        }
-        if (tlv.it_type == IMAGE_TLV_RUUVI_HW_REV_ID)
-        {
-            if (tlv.it_len != sizeof(p_hw_rev->hw_rev_num))
-            {
-                LOG_ERR(
-                    "Invalid Ruuvi HW revision ID TLV length %u in flash area %d, expected %zu",
-                    tlv.it_len,
-                    fa_id,
-                    sizeof(p_hw_rev->hw_rev_num));
-                goto func_exit;
-            }
-            if (0 != p_hw_rev->hw_rev_num)
-            {
-                LOG_ERR("Duplicate Ruuvi HW revision ID TLV in flash area %d", fa_id);
-                goto func_exit;
-            }
-            uint8_t buf[sizeof(p_hw_rev->hw_rev_num)] = { 0 };
-            rc                                        = flash_area_read(p_fa, data_off + sizeof(tlv), buf, sizeof(buf));
-            if (0 != rc)
-            {
-                LOG_ERR("Failed to read TLV from flash area %d, rc=%d", fa_id, rc);
-                goto func_exit;
-            }
-            p_hw_rev->hw_rev_num = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-            LOG_DBG("Found Ruuvi HW revision ID TLV in flash area %d: ID=%" PRIu32, fa_id, p_hw_rev->hw_rev_num);
-        }
-        if (tlv.it_type == IMAGE_TLV_RUUVI_HW_REV_NAME)
-        {
-            if (tlv.it_len >= sizeof(p_hw_rev->hw_rev_name))
-            {
-                LOG_ERR(
-                    "Invalid Ruuvi HW revision name TLV length %u in flash area %d, expected %zu",
-                    tlv.it_len,
-                    fa_id,
-                    sizeof(p_hw_rev->hw_rev_name));
-                goto func_exit;
-            }
-            if ('\0' != p_hw_rev->hw_rev_name[0])
-            {
-                LOG_ERR("Duplicate Ruuvi HW revision name TLV in flash area %d", fa_id);
-                goto func_exit;
-            }
-            rc = flash_area_read(p_fa, data_off + sizeof(tlv), p_hw_rev->hw_rev_name, tlv.it_len);
-            if (0 != rc)
-            {
-                LOG_ERR("Failed to read TLV from flash area %d, rc=%d", fa_id, rc);
-                goto func_exit;
-            }
-            p_hw_rev->hw_rev_name[tlv.it_len] = '\0';
-            LOG_DBG("Found Ruuvi HW revision name TLV in flash area %d: name='%s'", fa_id, p_hw_rev->hw_rev_name);
+            break;
         }
 
         if (('\0' != p_hw_rev->hw_rev_name[0]) && (0 != p_hw_rev->hw_rev_num))
@@ -201,10 +232,89 @@ fw_img_hw_rev_find_in_flash_area(const int fa_id, fw_image_hw_rev_t* const p_hw_
     {
         LOG_ERR("Ruuvi HW revision TLVs not found in flash area %d", fa_id);
     }
-
-func_exit:
-    flash_area_close(p_fa);
     return is_success;
+}
+
+bool
+fw_img_hw_rev_find_in_flash_area(const fa_id_t fa_id, fw_image_hw_rev_t* const p_hw_rev)
+{
+    const struct flash_area* p_fa = NULL;
+
+    p_hw_rev->hw_rev_num     = 0;
+    p_hw_rev->hw_rev_name[0] = '\0';
+
+    int32_t rc = flash_area_open(fa_id, &p_fa);
+    if (0 != rc)
+    {
+        LOG_ERR("Failed to open flash area %d, rc=%d", fa_id, rc);
+        return false;
+    }
+
+    const bool is_success = fw_img_hw_rev_find_in_flash_area_internal(fa_id, p_fa, p_hw_rev);
+
+    flash_area_close(p_fa);
+
+    return is_success;
+}
+
+static bool
+fw_img_hw_rev_handle_tlv_hw_rev_in_file(
+    const struct image_tlv* const p_tlv,
+    struct fs_file_t* const       p_file,
+    fw_image_hw_rev_t* const      p_hw_rev)
+{
+    if (IMAGE_TLV_RUUVI_HW_REV_ID == p_tlv->it_type)
+    {
+        if (p_tlv->it_len != sizeof(p_hw_rev->hw_rev_num))
+        {
+            LOG_ERR(
+                "Invalid Ruuvi HW revision ID TLV length %u, expected %zu",
+                p_tlv->it_len,
+                sizeof(p_hw_rev->hw_rev_num));
+            return false;
+        }
+        if (0 != p_hw_rev->hw_rev_num)
+        {
+            LOG_ERR("Duplicate Ruuvi HW revision ID TLV");
+            return false;
+        }
+
+        uint8_t buf[sizeof(p_hw_rev->hw_rev_num)] = { 0 };
+
+        const zephyr_api_ret_t rc = fs_read(p_file, buf, sizeof(buf));
+        if (rc < 0)
+        {
+            LOG_ERR("Failed to read TLV, rc=%d", rc);
+            return false;
+        }
+        p_hw_rev->hw_rev_num = u32_from_bytes_be(buf);
+        LOG_DBG("Found Ruuvi HW revision ID TLV: ID=%" PRIu32, p_hw_rev->hw_rev_num);
+    }
+    if (IMAGE_TLV_RUUVI_HW_REV_NAME == p_tlv->it_type)
+    {
+        if (p_tlv->it_len >= sizeof(p_hw_rev->hw_rev_name))
+        {
+            LOG_ERR(
+                "Invalid Ruuvi HW revision name TLV length %u, expected %zu",
+                p_tlv->it_len,
+                sizeof(p_hw_rev->hw_rev_name));
+            return false;
+        }
+        if ('\0' != p_hw_rev->hw_rev_name[0])
+        {
+            LOG_ERR("Duplicate Ruuvi HW revision name TLV");
+            return false;
+        }
+        const zephyr_api_ret_t rc = fs_read(p_file, p_hw_rev->hw_rev_name, p_tlv->it_len);
+        if (rc < 0)
+        {
+            LOG_ERR("Failed to read TLV, rc=%d", rc);
+            return false;
+        }
+        p_hw_rev->hw_rev_name[p_tlv->it_len] = '\0';
+        LOG_DBG("Found Ruuvi HW revision name TLV: name='%s'", p_hw_rev->hw_rev_name);
+    }
+    return true;
 }
 
 bool
@@ -213,8 +323,8 @@ fw_img_hw_rev_find_in_file(struct fs_file_t* const p_file, fw_image_hw_rev_t* co
     p_hw_rev->hw_rev_num     = 0;
     p_hw_rev->hw_rev_name[0] = '\0';
 
-    const struct image_header img_hdr = { 0 };
-    int                       rc      = fs_seek(p_file, 0, FS_SEEK_SET);
+    struct image_header img_hdr = { 0 };
+    zephyr_api_ret_t    rc      = fs_seek(p_file, 0, FS_SEEK_SET);
     if (0 != rc)
     {
         LOG_ERR("Failed to seek to the beginning of the file, rc=%d", rc);
@@ -248,7 +358,7 @@ fw_img_hw_rev_find_in_file(struct fs_file_t* const p_file, fw_image_hw_rev_t* co
     size_t data_off = tlvs_start_off;
 
     struct image_tlv tlv = { 0 };
-    while (data_off + sizeof(tlv) <= tlvs_end_off)
+    while ((data_off + sizeof(tlv)) <= tlvs_end_off)
     {
         rc = fs_seek(p_file, data_off, FS_SEEK_SET);
         if (0 != rc)
@@ -263,59 +373,9 @@ fw_img_hw_rev_find_in_file(struct fs_file_t* const p_file, fw_image_hw_rev_t* co
             return false;
         }
 
-        if (tlv.it_type == 0xff && tlv.it_len == 0xffff)
+        if (!fw_img_hw_rev_handle_tlv_hw_rev_in_file(&tlv, p_file, p_hw_rev))
         {
-            LOG_ERR("Invalid TLV");
             return false;
-        }
-        if (tlv.it_type == IMAGE_TLV_RUUVI_HW_REV_ID)
-        {
-            if (tlv.it_len != sizeof(p_hw_rev->hw_rev_num))
-            {
-                LOG_ERR(
-                    "Invalid Ruuvi HW revision ID TLV length %u, expected %zu",
-                    tlv.it_len,
-                    sizeof(p_hw_rev->hw_rev_num));
-                return false;
-            }
-            if (0 != p_hw_rev->hw_rev_num)
-            {
-                LOG_ERR("Duplicate Ruuvi HW revision ID TLV");
-                return false;
-            }
-            uint8_t buf[sizeof(p_hw_rev->hw_rev_num)] = { 0 };
-            rc                                        = fs_read(p_file, buf, sizeof(buf));
-            if (rc < 0)
-            {
-                LOG_ERR("Failed to read TLV, rc=%d", rc);
-                return false;
-            }
-            p_hw_rev->hw_rev_num = (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-            LOG_DBG("Found Ruuvi HW revision ID TLV: ID=%" PRIu32, p_hw_rev->hw_rev_num);
-        }
-        if (tlv.it_type == IMAGE_TLV_RUUVI_HW_REV_NAME)
-        {
-            if (tlv.it_len >= sizeof(p_hw_rev->hw_rev_name))
-            {
-                LOG_ERR(
-                    "Invalid Ruuvi HW revision name TLV length %u, expected %zu",
-                    tlv.it_len,
-                    sizeof(p_hw_rev->hw_rev_name));
-                return false;
-            }
-            if ('\0' != p_hw_rev->hw_rev_name[0])
-            {
-                LOG_ERR("Duplicate Ruuvi HW revision name TLV");
-                return false;
-            }
-            rc = fs_read(p_file, p_hw_rev->hw_rev_name, tlv.it_len);
-            if (rc < 0)
-            {
-                LOG_ERR("Failed to read TLV, rc=%d", rc);
-                return false;
-            }
-            p_hw_rev->hw_rev_name[tlv.it_len] = '\0';
-            LOG_DBG("Found Ruuvi HW revision name TLV: name='%s'", p_hw_rev->hw_rev_name);
         }
 
         if (('\0' != p_hw_rev->hw_rev_name[0]) && (0 != p_hw_rev->hw_rev_num))
@@ -334,10 +394,10 @@ fw_img_hw_rev_find_in_file(struct fs_file_t* const p_file, fw_image_hw_rev_t* co
 }
 
 static bool
-get_flash_area_address_and_size(const int fa_id, uint32_t* const p_fa_addr, uint32_t* const p_fa_size)
+get_flash_area_address_and_size(const fa_id_t fa_id, uint32_t* const p_fa_addr, uint32_t* const p_fa_size)
 {
     const struct flash_area* p_fa = NULL;
-    int                      rc   = flash_area_open(fa_id, &p_fa);
+    int32_t                  rc   = flash_area_open(fa_id, &p_fa);
     if (0 != rc)
     {
         LOG_ERR("Failed to open flash area %d, rc=%d", fa_id, rc);
@@ -350,12 +410,13 @@ get_flash_area_address_and_size(const int fa_id, uint32_t* const p_fa_addr, uint
 }
 
 static bool
-load_image_header(const int fa_id, struct image_header* const p_img_hdr)
+load_image_header(const fa_id_t fa_id, struct image_header* const p_img_hdr)
 {
     bool is_success = false;
 
     const struct flash_area* p_fa = NULL;
-    int                      rc   = flash_area_open(fa_id, &p_fa);
+
+    int32_t rc = flash_area_open(fa_id, &p_fa);
     if (0 != rc)
     {
         return false;
@@ -364,17 +425,18 @@ load_image_header(const int fa_id, struct image_header* const p_img_hdr)
     rc = boot_image_load_header(p_fa, p_img_hdr);
     if (0 != rc)
     {
-        goto func_exit;
+        LOG_ERR("Failed to load image header for flash area %d, rc=%d", fa_id, rc);
+    }
+    else
+    {
+        is_success = true;
     }
 
-    is_success = true;
-
-func_exit:
     flash_area_close(p_fa);
     return is_success;
 }
 
-static int
+static fa_id_t
 fa_id_from_fw_img_id(const fw_img_id_e fw_img_id)
 {
     switch (fw_img_id)
@@ -389,7 +451,7 @@ fa_id_from_fw_img_id(const fw_img_id_e fw_img_id)
             return PM_ID(s1);
         default:
             LOG_ERR("Invalid fw_img_id %d", fw_img_id);
-            return -1;
+            return FA_ID_INVALID;
     }
 }
 
@@ -400,10 +462,10 @@ fw_img_get_image_info(
     const struct fw_info**      p_p_fw_info,
     fw_image_hw_rev_t* const    p_hw_rev)
 {
-    uint32_t  fa_addr = 0;
-    uint32_t  fa_size = 0;
-    const int fa_id   = fa_id_from_fw_img_id(fw_img_id);
-    if (fa_id < 0)
+    uint32_t      fa_addr = 0;
+    uint32_t      fa_size = 0;
+    const fa_id_t fa_id   = fa_id_from_fw_img_id(fw_img_id);
+    if (FA_ID_INVALID == fa_id)
     {
         return false;
     }

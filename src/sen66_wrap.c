@@ -8,6 +8,7 @@
 #include "sen66_wrap.h"
 #include <string.h>
 #include <math.h>
+#include <zephyr/dsp/types.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include "sen66_i2c.h"
@@ -155,7 +156,7 @@ sen66_wrap_read_data_ready(bool* const p_flag_data_ready)
     return flag_success;
 }
 
-sen66_wrap_read_measurement_status_t
+sen66_wrap_read_measurement_status_e
 sen66_wrap_read_measured_values(sen66_wrap_measurement_t* const p_measurement)
 {
     bool flag_data_ready = false;
@@ -339,8 +340,6 @@ sen66_wrap_check(void)
         return false;
     }
 
-    k_msleep(1200);
-
     sen66_wrap_serial_number_t serial_num = { 0 };
     if (!sen66_wrap_get_serial_number(&serial_num))
     {
@@ -395,7 +394,7 @@ sen66_wrap_conv_raw_to_float_pm(const uint16_t raw_pm)
     {
         return NAN;
     }
-    const re_float result = (float)raw_pm / SEN66_SCALE_FACTOR_PM;
+    const re_float result = (float32_t)raw_pm / SEN66_SCALE_FACTOR_PM;
     if (result < RE_6_PM_MIN)
     {
         return RE_6_PM_MIN;
@@ -414,7 +413,7 @@ sen66_wrap_conv_raw_to_float_humidity(const int16_t raw_humidity)
     {
         return NAN;
     }
-    const re_float result = (float)raw_humidity / SEN66_SCALE_FACTOR_HUMIDITY;
+    const re_float result = (float32_t)raw_humidity / SEN66_SCALE_FACTOR_HUMIDITY;
     if (result < RE_6_HUMIDITY_MIN)
     {
         return RE_6_HUMIDITY_MIN;
@@ -433,7 +432,7 @@ sen66_wrap_conv_raw_to_float_temperature(const int16_t temperature)
     {
         return NAN;
     }
-    const re_float result = (float)temperature / SEN66_SCALE_FACTOR_TEMPERATURE;
+    const re_float result = (float32_t)temperature / SEN66_SCALE_FACTOR_TEMPERATURE;
     if (result < -RE_6_TEMPERATURE_MAX)
     {
         return -RE_6_TEMPERATURE_MAX;
@@ -452,7 +451,7 @@ sen66_wrap_conv_raw_to_float_voc_index(const int16_t raw_voc_index)
     {
         return NAN;
     }
-    const re_float result = (float)raw_voc_index / SEN66_SCALE_FACTOR_VOC_INDEX;
+    const re_float result = (float32_t)raw_voc_index / SEN66_SCALE_FACTOR_VOC_INDEX;
     if (result < RE_6_VOC_MIN)
     {
         return RE_6_VOC_MIN;
@@ -471,7 +470,7 @@ sen66_wrap_conv_raw_to_float_nox_index(const int16_t raw_nox_index)
     {
         return NAN;
     }
-    const re_float result = (float)raw_nox_index / SEN66_SCALE_FACTOR_NOX_INDEX;
+    const re_float result = (float32_t)raw_nox_index / SEN66_SCALE_FACTOR_NOX_INDEX;
     if (result < RE_6_NOX_MIN)
     {
         return RE_6_NOX_MIN;
@@ -490,7 +489,7 @@ sen66_wrap_conv_raw_to_float_co2(const uint16_t raw_co2)
     {
         return NAN;
     }
-    const re_float result = (float)raw_co2 / SEN66_SCALE_FACTOR_CO2;
+    const re_float result = (float32_t)raw_co2 / SEN66_SCALE_FACTOR_CO2;
     if (result < RE_6_CO2_MIN)
     {
         return RE_6_CO2_MIN;

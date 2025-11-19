@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#define TLOG_ERR(fmt, ...) \
+#define TLOG_ERR(fmt, ...) /* NOSONAR */ \
     do \
     { \
         if (!Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_ERR)) \
@@ -31,7 +31,7 @@ extern "C" {
         LOG_ERR("[%s/%p/%d] " fmt, thread_name, thread_id, thread_priority __VA_OPT__(, ) __VA_ARGS__); \
     } while (0)
 
-#define TLOG_WRN(fmt, ...) \
+#define TLOG_WRN(fmt, ...) /* NOSONAR */ \
     do \
     { \
         if (!Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_WRN)) \
@@ -49,7 +49,7 @@ extern "C" {
         LOG_WRN("[%s/%p/%d] " fmt, thread_name, thread_id, thread_priority __VA_OPT__(, ) __VA_ARGS__); \
     } while (0)
 
-#define TLOG_INF(fmt, ...) \
+#define TLOG_INF(fmt, ...) /* NOSONAR */ \
     do \
     { \
         if (!Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_INF)) \
@@ -67,7 +67,7 @@ extern "C" {
         LOG_INF("[%s/%p/%d] " fmt, thread_name, thread_id, thread_priority __VA_OPT__(, ) __VA_ARGS__); \
     } while (0)
 
-#define TLOG_DBG(fmt, ...) \
+#define TLOG_DBG(fmt, ...) /* NOSONAR */ \
     do \
     { \
         if (!Z_LOG_CONST_LEVEL_CHECK(LOG_LEVEL_DBG)) \

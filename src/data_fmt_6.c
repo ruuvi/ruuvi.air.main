@@ -20,8 +20,8 @@ data_fmt_6_init(
         .co2           = sen66_wrap_conv_raw_to_float_co2(p_measurement->sen66.co2),
         .voc           = sen66_wrap_conv_raw_to_float_voc_index(p_measurement->sen66.voc_index),
         .nox           = sen66_wrap_conv_raw_to_float_nox_index(p_measurement->sen66.nox_index),
-        .luminosity    = (re_float)p_measurement->luminosity,
-        .sound_avg_dba = (re_float)p_measurement->sound_avg_dba,
+        .luminosity    = p_measurement->luminosity,
+        .sound_avg_dba = p_measurement->sound_avg_dba,
         .seq_cnt2      = measurement_cnt & RE_BYTE_MASK,
         .flags         = flags,
 

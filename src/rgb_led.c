@@ -6,8 +6,10 @@
 #include <stdint.h>
 #include <zephyr/drivers/led.h>
 #include <lp5810_api.h>
+#include "sys_utils.h"
 #include "led_calibration.h"
 #include "app_settings.h"
+#include "zephyr_api.h"
 #include "tlog.h"
 
 LOG_MODULE_REGISTER(rgb_led, LOG_LEVEL_INF);
@@ -46,7 +48,8 @@ led_rgb_calc_pwm(
     const uint8_t* const           p_brightness_to_pwm_table)
 {
     const uint8_t dimming_coeff = p_brightness_to_pwm_table[brightness_idx];
-    return (rgb_led_pwm_t)(((uint32_t)color * dimming_coeff + (LED_RGB_MAX_PWM / 2)) / LED_RGB_MAX_PWM);
+    return (rgb_led_pwm_t)((((uint32_t)color * dimming_coeff) + (LED_RGB_MAX_PWM / ROUND_HALF_DIVISOR))
+                           / LED_RGB_MAX_PWM);
 }
 
 static void
@@ -55,9 +58,9 @@ rgb_led_conv_rgb_with_brightness_to_currents_and_pwms(
     rgb_led_currents_t* const                    p_currents,
     rgb_led_pwms_t* const                        p_pwms)
 {
-    const rgb_led_brightness_idx_t brightness_idx = ((uint32_t)p_color->brightness
-                                                         * (LED_CALIBRATION_BRIGHTNESS_STEPS - 1)
-                                                     + ((LED_CALIBRATION_BRIGHTNESS_STEPS - 1) / 2))
+    const rgb_led_brightness_idx_t brightness_idx = (((uint32_t)p_color->brightness
+                                                      * (LED_CALIBRATION_BRIGHTNESS_STEPS - 1))
+                                                     + ((LED_CALIBRATION_BRIGHTNESS_STEPS - 1) / ROUND_HALF_DIVISOR))
                                                     / LED_RGB_MAX_BRIGHTNESS;
     p_currents->current_red   = g_led_calibration_brightness_to_current_red[brightness_idx];
     p_currents->current_green = g_led_calibration_brightness_to_current_green[brightness_idx];
@@ -103,7 +106,7 @@ rgb_led_set_raw_currents_and_pwms(
         p_rgb_led_pwms->pwm_red,         p_rgb_led_pwms->pwm_green,         p_rgb_led_pwms->pwm_blue,
     };
     LOG_HEXDUMP_DBG(buf, sizeof(buf), "RGB LED update: ");
-    int res = led_write_channels(dev_lp5810, LED_RGB_CHANNEL_CURRENT_START, sizeof(buf), buf);
+    zephyr_api_ret_t res = led_write_channels(dev_lp5810, LED_RGB_CHANNEL_CURRENT_START, sizeof(buf), buf);
     if (0 != res)
     {
         LOG_ERR("LP5810: led_write_channels failed, res=%d", res);
@@ -125,7 +128,7 @@ rgb_led_update_pwms(const rgb_led_pwms_t* const p_rgb_led_pwms)
         p_rgb_led_pwms->pwm_blue,
     };
     LOG_HEXDUMP_DBG(buf, sizeof(buf), "RGB LED update: ");
-    int res = led_write_channels(dev_lp5810, LED_RGB_CHANNEL_PWM_START, sizeof(buf), buf);
+    zephyr_api_ret_t res = led_write_channels(dev_lp5810, LED_RGB_CHANNEL_PWM_START, sizeof(buf), buf);
     if (0 != res)
     {
         LOG_ERR("LP5810: led_write_channels failed, res=%d", res);
@@ -251,18 +254,18 @@ rgb_led_read_raw_pwms(rgb_led_pwms_t* const p_pwms)
     {
         return false;
     }
-    uint8_t buf[3] = { 0 };
+    uint8_t buf[RGB_LED_COLOR_CHANNELS_NUM] = { 0 };
 #if DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
-    const int res = lp5810_read_pwms(dev_lp5810, buf, sizeof(buf));
+    const zephyr_api_ret_t res = lp5810_read_pwms(dev_lp5810, buf, sizeof(buf));
     if (0 != res)
     {
         LOG_ERR("LP5810: lp5810_read_pwms failed, res=%d", res);
         return false;
     }
 #endif
-    p_pwms->pwm_red   = buf[0];
-    p_pwms->pwm_green = buf[1];
-    p_pwms->pwm_blue  = buf[2];
+    p_pwms->pwm_red   = buf[RGB_LED_CHANNEL_IDX_RED];
+    p_pwms->pwm_green = buf[RGB_LED_CHANNEL_IDX_GREEN];
+    p_pwms->pwm_blue  = buf[RGB_LED_CHANNEL_IDX_BLUE];
     return true;
 }
 
@@ -274,12 +277,12 @@ rgb_led_write_raw_pwms(const rgb_led_pwms_t* const p_pwms)
         return false;
     }
 #if DT_HAS_COMPAT_STATUS_OKAY(ti_lp5810)
-    uint8_t buf[3] = {
+    uint8_t buf[RGB_LED_COLOR_CHANNELS_NUM] = {
         p_pwms->pwm_red,
         p_pwms->pwm_green,
         p_pwms->pwm_blue,
     };
-    const int res = lp5810_write_pwms(dev_lp5810, buf, sizeof(buf));
+    const zephyr_api_ret_t res = lp5810_write_pwms(dev_lp5810, buf, sizeof(buf));
     if (0 != res)
     {
         LOG_ERR("LP5810: lp5810_write_pwms failed, res=%d", res);
@@ -316,9 +319,9 @@ rgb_led_turn_on_animation_blinking_white(void)
 
     const rgb_led_color_with_brightness_t color_white = {
         .rgb = {
-            .red = 255,
-            .green = 255,
-            .blue = 255,
+            .red = RGB_LED_COLOR_VAL_MAX,
+            .green = RGB_LED_COLOR_VAL_MAX,
+            .blue = RGB_LED_COLOR_VAL_MAX,
         },
         .brightness = brightness,
     };
@@ -336,22 +339,23 @@ rgb_led_turn_on_animation_blinking_white(void)
     const lp5810_auto_animation_cfg_t anim_cfg = {
         .auto_pause    = 0,
         .auto_playback = 0x0F,
-        .AEU1_PWM      = { 0, 255, 0, 0, 0 },
-        .AEU1_T12      = 0x44,
-        .AEU1_T34      = 0x00,
-        .AEU1_playback = 0x03,
-        .AEU2_PWM      = { 0, 0, 0, 0, 0 },
-        .AEU2_T12      = 0,
-        .AEU2_T34      = 0,
-        .AEU2_playback = 0,
-        .AEU3_PWM      = { 0, 0, 0, 0, 0 },
-        .AEU3_T12      = 0,
-        .AEU3_T34      = 0,
-        .AEU3_playback = 0,
+        .aeu1_pwm      = { 0, 255, 0, 0, 0 },
+        .aeu1_t12      = 0x44,
+        .aeu1_t34      = 0x00,
+        .aeu1_playback = 0x03,
+        .aeu2_pwm      = { 0, 0, 0, 0, 0 },
+        .aeu2_t12      = 0,
+        .aeu2_t34      = 0,
+        .aeu2_playback = 0,
+        .aeu3_pwm      = { 0, 0, 0, 0, 0 },
+        .aeu3_t12      = 0,
+        .aeu3_t34      = 0,
+        .aeu3_playback = 0,
     };
-    for (int i = 0; i < 3; i++)
+    for (int32_t i = 0; i <= LP5810_LED_IDX_2; ++i)
     {
-        if (!lp5810_auto_animation_configure(dev_lp5810, i, &anim_cfg))
+        const lp5810_led_idx_e channel = i;
+        if (!lp5810_auto_animation_configure(dev_lp5810, channel, &anim_cfg))
         {
             LOG_ERR("LP5810: Failed to configure AUTO ANIMATION");
             return false;

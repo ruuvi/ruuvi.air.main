@@ -14,8 +14,14 @@
 #include "utils.h"
 #include "ruuvi_endpoint_e1.h"
 #include "app_rtc.h"
+#include "sys_utils.h"
+#include "zephyr_api.h"
 
 LOG_MODULE_REGISTER(hist_log, LOG_LEVEL_INF);
+
+#define CRC16_CCITT_INITIAL_VALUE (0xFFFFU)
+
+#define HIST_LOG_MAX_READ_ERR_PRINT_CNT (10U)
 
 #define USE_HIST_LOG (1 && IS_ENABLED(CONFIG_RUUVI_AIR_ENABLE_HIST_LOG))
 
@@ -56,13 +62,13 @@ static bool
 hist_log_erase_flash_storage(void)
 {
     const struct flash_area* p_fa = NULL;
-    int                      rc   = flash_area_open(HIST_LOG_FLASH_AREA_ID, &p_fa);
+    int32_t                  rc   = flash_area_open(HIST_LOG_FLASH_AREA_ID, &p_fa);
     if (0 != rc)
     {
         TLOG_ERR("flash_area_open failed, rc=%d", rc);
         return false;
     }
-    for (int i = 0; i < ARRAY_SIZE(g_hist_log_sectors); i++)
+    for (int32_t i = 0; i < ARRAY_SIZE(g_hist_log_sectors); ++i)
     {
         const struct flash_sector* p_fs = &g_hist_log_sectors[i];
         TLOG_INF(
@@ -85,8 +91,8 @@ hist_log_erase_flash_storage(void)
 static bool
 hist_log_check_sectors_count(void)
 {
-    size_t sector_count = ARRAY_SIZE(g_hist_log_sectors);
-    int    rc           = flash_area_get_sectors(HIST_LOG_FLASH_AREA_ID, &sector_count, g_hist_log_sectors);
+    size_t           sector_count = ARRAY_SIZE(g_hist_log_sectors);
+    zephyr_api_ret_t rc           = flash_area_get_sectors(HIST_LOG_FLASH_AREA_ID, &sector_count, g_hist_log_sectors);
     if ((0 != rc) || (0 == sector_count))
     {
         TLOG_ERR("flash_area_get_sectors failed, rc=%d", rc);
@@ -101,7 +107,7 @@ hist_log_check_sectors_count(void)
         return false;
     }
     TLOG_DBG("flash_area has %u sectors", (unsigned)sector_count);
-    for (int i = 0; i < sector_count; i++)
+    for (int32_t i = 0; i < sector_count; ++i)
     {
         TLOG_DBG(
             "sector[%d]: fs_off=%x, fs_size=%x",
@@ -115,8 +121,8 @@ hist_log_check_sectors_count(void)
 static bool
 hist_log_fcb_init(struct fcb* const p_fcb)
 {
-    int rc = fcb_init(HIST_LOG_FLASH_AREA_ID, p_fcb);
-    if (rc != 0)
+    zephyr_api_ret_t rc = fcb_init(HIST_LOG_FLASH_AREA_ID, p_fcb);
+    if (0 != rc)
     {
         if (-ENOMSG == rc)
         {
@@ -148,13 +154,13 @@ static bool
 hist_log_check_flash_driver(void)
 {
     const struct flash_area* fa = NULL;
-    int                      rc = flash_area_open(HIST_LOG_FLASH_AREA_ID, &fa);
+    int32_t                  rc = flash_area_open(HIST_LOG_FLASH_AREA_ID, &fa);
     if (0 != rc)
     {
         LOG_ERR("flash_area_open failed, rc=%d", rc);
         return false;
     }
-    if (!flash_area_has_driver(fa))
+    if (flash_area_has_driver(fa) <= 0)
     {
         LOG_ERR("flash_area_has_driver failed");
         return false;
@@ -245,15 +251,18 @@ hist_log_append_record(const uint32_t timestamp, const hist_log_record_data_t* c
         .data      = *p_data,
         .crc16     = { 0, 0 },
     };
-    const uint16_t crc16 = crc16_ccitt(0xFFFFU, (const uint8_t*)&record, offsetof(hist_log_record_t, crc16));
-    record.crc16[0]      = crc16 & 0xFF;
-    record.crc16[1]      = (crc16 >> 8) & 0xFF;
+    const uint16_t crc16 = crc16_ccitt(
+        CRC16_CCITT_INITIAL_VALUE,
+        (const uint8_t*)&record,
+        offsetof(hist_log_record_t, crc16));
+    record.crc16[0] = crc16 & BYTE_MASK;
+    record.crc16[1] = (crc16 >> BYTE_SHIFT_1) & BYTE_MASK;
 
     struct fcb_entry  loc   = { 0 };
     struct fcb* const p_fcb = &g_hist_log_fcb;
 
     // Step 1: Allocate space for the new record in FCB
-    int rc = fcb_append(p_fcb, sizeof(record), &loc);
+    zephyr_api_ret_t rc = fcb_append(p_fcb, sizeof(record), &loc);
     if (0 != rc)
     {
         if (-ENOSPC != rc)
@@ -318,6 +327,56 @@ hist_log_append_record(const uint32_t timestamp, const hist_log_record_data_t* c
     return true;
 }
 
+static bool
+hist_log_handle_record(
+    const struct hist_log_record_t* const p_record,
+    const uint32_t                        timestamp_start,
+    hist_log_record_handler_t             p_cb,
+    void* const                           p_user_data,
+    uint32_t* const                       p_crc_err_cnt,
+    const off_t                           read_off,
+    const struct fcb_entry* const         p_loc)
+{
+    LOG_HEXDUMP_DBG(p_record, sizeof(*p_record), "Read record");
+
+    if (0 != (crc16_ccitt(CRC16_CCITT_INITIAL_VALUE, (const uint8_t*)p_record, sizeof(*p_record))))
+    {
+        *p_crc_err_cnt += 1;
+        if (*p_crc_err_cnt < HIST_LOG_MAX_READ_ERR_PRINT_CNT)
+        {
+            TLOG_ERR(
+                "CRC16 check failed: read_off=%x, fs_off=%x, fe_data_off=%x",
+                (unsigned)read_off,
+                (unsigned)p_loc->fe_sector->fs_off,
+                (unsigned)p_loc->fe_data_off);
+        }
+        else if (HIST_LOG_MAX_READ_ERR_PRINT_CNT == *p_crc_err_cnt)
+        {
+            TLOG_ERR("Too many CRC16 errors, suppressing further messages");
+        }
+        else
+        {
+            // MISRA: "if ... else if" constructs should end with "else" clauses
+        }
+    }
+    else
+    {
+        if (p_record->timestamp >= timestamp_start)
+        {
+            TLOG_DBG("Read log record: time=%" PRIu32 " > start=%" PRIu32, p_record->timestamp, timestamp_start);
+            if (!p_cb(p_record->timestamp, &p_record->data, p_user_data))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            TLOG_DBG("Skip log record: time=%" PRIu32 " < start=%" PRIu32, p_record->timestamp, timestamp_start);
+        }
+    }
+    return true;
+}
+
 bool
 hist_log_read_records(hist_log_record_handler_t p_cb, void* const p_user_data, const uint32_t timestamp_start)
 {
@@ -332,7 +391,7 @@ hist_log_read_records(hist_log_record_handler_t p_cb, void* const p_user_data, c
     };
     struct fcb* const p_fcb = &g_hist_log_fcb;
 
-    int rc = fcb_getnext(p_fcb, &loc);
+    zephyr_api_ret_t rc = fcb_getnext(p_fcb, &loc);
     if (0 != rc)
     {
         TLOG_DBG("No records found");
@@ -356,49 +415,24 @@ hist_log_read_records(hist_log_record_handler_t p_cb, void* const p_user_data, c
         if (0 != rc)
         {
             read_err_cnt += 1;
-            if (read_err_cnt < 10)
+            if (read_err_cnt < HIST_LOG_MAX_READ_ERR_PRINT_CNT)
             {
                 TLOG_ERR("flash_area_read failed: %d", rc);
             }
-            else if (10 == read_err_cnt)
+            else if (HIST_LOG_MAX_READ_ERR_PRINT_CNT == read_err_cnt)
             {
                 TLOG_ERR("Too many read errors, suppressing further messages");
+            }
+            else
+            {
+                // MISRA: "if ... else if" constructs should end with "else" clauses
             }
         }
         else
         {
-            LOG_HEXDUMP_DBG(&record, sizeof(record), "Read record");
-
-            if (0 != (crc16_ccitt(0xFFFFU, (const uint8_t*)&record, sizeof(record))))
+            if (!hist_log_handle_record(&record, timestamp_start, p_cb, p_user_data, &crc_err_cnt, read_off, &loc))
             {
-                crc_err_cnt += 1;
-                if (crc_err_cnt < 10)
-                {
-                    TLOG_ERR(
-                        "CRC16 check failed: read_off=%x, fs_off=%x, fe_data_off=%x",
-                        (unsigned)read_off,
-                        (unsigned)loc.fe_sector->fs_off,
-                        (unsigned)loc.fe_data_off);
-                }
-                else if (10 == crc_err_cnt)
-                {
-                    TLOG_ERR("Too many CRC16 errors, suppressing further messages");
-                }
-            }
-            else
-            {
-                if (record.timestamp >= timestamp_start)
-                {
-                    TLOG_DBG("Read log record: time=%" PRIu32 " > start=%" PRIu32, record.timestamp, timestamp_start);
-                    if (!p_cb(record.timestamp, &record.data, p_user_data))
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    TLOG_DBG("Skip log record: time=%" PRIu32 " < start=%" PRIu32, record.timestamp, timestamp_start);
-                }
+                return false;
             }
         }
 

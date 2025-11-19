@@ -8,8 +8,13 @@
 #include <zephyr/drivers/rtc.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/timeutil.h>
+#include "zephyr_api.h"
 
 LOG_MODULE_REGISTER(RTC, LOG_LEVEL_INF);
+
+#if !defined(RUUVI_MOCK_MEASUREMENTS)
+#define RUUVI_MOCK_MEASUREMENTS (0)
+#endif
 
 #if CONFIG_RTC
 #if DT_NODE_EXISTS(DT_ALIAS(rtc_0))
@@ -41,8 +46,8 @@ app_rtc_get_time(struct tm* const p_tm_time)
         return false;
     }
 
-    struct rtc_time time_rtc = { 0 };
-    int             ret      = rtc_get_time(rtc_dev, &time_rtc);
+    struct rtc_time  time_rtc = { 0 };
+    zephyr_api_ret_t ret      = rtc_get_time(rtc_dev, &time_rtc);
     if ((0 != ret) && (-ENODATA != ret))
     {
         LOG_ERR("Failed to get RTC time, error: %d", ret);
@@ -107,7 +112,7 @@ app_rtc_set_time(const struct tm* const p_tm_time)
         .tm_isdst = p_tm_time->tm_isdst,
         .tm_nsec  = 0,
     };
-    int ret = rtc_set_time(rtc_dev, &time_rtc);
+    zephyr_api_ret_t ret = rtc_set_time(rtc_dev, &time_rtc);
     if (0 != ret)
     {
         LOG_ERR("Failed to set RTC time, error: %d", ret);

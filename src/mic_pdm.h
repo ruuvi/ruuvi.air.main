@@ -26,12 +26,12 @@ extern "C" {
 #define MIC_PDM_BYTES_PER_SAMPLE sizeof(int16_t)
 
 /* Size of a block for 20 ms of audio data. */
-#define MIC_PDM_BLOCK_SIZE(_sample_rate, _number_of_channels) \
+#define MIC_PDM_BLOCK_SIZE(_sample_rate, _number_of_channels) /* NOSONAR: used in array declarations */ \
     (MIC_PDM_BYTES_PER_SAMPLE * (_sample_rate / MIC_PDM_NUM_BLOCKS_PER_SECOND) * _number_of_channels)
 
 #define MIC_PDM_MAX_BLOCK_SIZE MIC_PDM_BLOCK_SIZE(MIC_PDM_SAMPLE_RATE, 1)
 
-#define MIC_PDM_NUM_SAMPLES_IN_BLOCK (MIC_PDM_MAX_BLOCK_SIZE / MIC_PDM_BYTES_PER_SAMPLE)
+#define MIC_PDM_NUM_SAMPLES_IN_BLOCK ((int32_t)(MIC_PDM_MAX_BLOCK_SIZE / MIC_PDM_BYTES_PER_SAMPLE))
 
 typedef int8_t spl_db_t;
 #define SPL_DB_INVALID (0)

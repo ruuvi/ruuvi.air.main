@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <arm_math.h>
 #include "zassert.h"
 #include "spl_calc.h"
 #include "mic_pdm.h"

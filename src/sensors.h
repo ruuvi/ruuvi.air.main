@@ -6,6 +6,7 @@
 #define SENSORS_H
 
 #include <stdbool.h>
+#include <zephyr/dsp/types.h>
 #include <time.h>
 #include "sen66_wrap.h"
 
@@ -13,25 +14,25 @@
 extern "C" {
 #endif
 
-typedef enum sensors_poll_result_t
+typedef enum sensors_poll_result_e
 {
     SENSORS_POLL_RESULT_OK,
     SENSORS_POLL_RESULT_ERR,
     SENSORS_POLL_RESULT_NOT_READY,
-} sensors_poll_result_t;
+} sensors_poll_result_e;
 
 typedef struct sensors_measurement_t
 {
     sen66_wrap_measurement_t sen66;
-    float                    dps310_temperature;
-    float                    dps310_pressure;
-    float                    shtc3_temperature;
-    float                    shtc3_humidity;
-    float                    luminosity;
-    float                    sound_inst_dba;
-    float                    sound_avg_dba;
-    float                    sound_peak_spl_db;
-    float                    air_quality_index;
+    float32_t                dps310_temperature;
+    float32_t                dps310_pressure;
+    float32_t                shtc3_temperature;
+    float32_t                shtc3_humidity;
+    float32_t                luminosity;
+    float32_t                sound_inst_dba;
+    float32_t                sound_avg_dba;
+    float32_t                sound_peak_spl_db;
+    float32_t                air_quality_index;
     bool                     flag_nox_calibration_in_progress;
 } sensors_measurement_t;
 
@@ -45,7 +46,7 @@ typedef struct sensors_flags_t
 bool
 sensors_init(void);
 
-sensors_poll_result_t
+sensors_poll_result_e
 sensors_poll(const time_t cur_unix_time);
 
 sensors_measurement_t

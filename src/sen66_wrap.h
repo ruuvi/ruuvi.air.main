@@ -68,7 +68,7 @@ typedef enum sen66_wrap_read_measurement_status_e
     SEN66_WRAP_READ_MEASUREMENT_STATUS_OK,
     SEN66_WRAP_READ_MEASUREMENT_STATUS_ERR,
     SEN66_WRAP_READ_MEASUREMENT_STATUS_DATA_NOT_READY,
-} sen66_wrap_read_measurement_status_t;
+} sen66_wrap_read_measurement_status_e;
 
 bool
 sen66_wrap_init_i2c(void);
@@ -79,7 +79,7 @@ sen66_wrap_check(void);
 bool
 sen66_wrap_start_continuous_measurement(void);
 
-sen66_wrap_read_measurement_status_t
+sen66_wrap_read_measurement_status_e
 sen66_wrap_read_measured_values(sen66_wrap_measurement_t* const p_measurement);
 
 bool
