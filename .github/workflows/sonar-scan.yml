@@ -309,7 +309,7 @@ jobs:
             echo "[========== START SonarQube Scan: ruuvi.air.main ]"
             cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
             sonar-scanner --debug \
-              --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+              --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
               --define sonar.coverageReportPaths=coverage.xml
             echo "[========== END SonarQube Scan: ruuvi.air.main]"
           ) >/tmp/sonar-scan-ruuvi.air.main.log 2>&1 &
@@ -317,6 +317,7 @@ jobs:
 
           (
             echo "[========== START SonarQube Scan: ruuvi.air.b0 ]"
+            unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
             cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
             sonar-scanner --debug \
               --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
@@ -325,6 +326,7 @@ jobs:
 
           (
             echo "[========== START SonarQube Scan: ruuvi.air.mcuboot ]"
+            unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
             cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
             sonar-scanner --debug \
               --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
@@ -333,6 +335,7 @@ jobs:
 
           (
             echo "[========== START SonarQube Scan: ruuvi.air.fw_loader ]"
+            unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
             cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
             sonar-scanner --debug \
               --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
