@@ -296,58 +296,77 @@ jobs:
               rm -rf twister-out
             '
 
-      - name: SonarQube Scan ruuvi.air.main
-        uses: SonarSource/sonarqube-scan-action@v6
+      - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
-          args: >
-            --debug
-            --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
-            --define sonar.coverageReportPaths=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/coverage.xml
-
-      - name: SonarQube Scan ruuvi.air.b0
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          GITHUB_EVENT_NAME: ""
-          GITHUB_HEAD_REF: ""
-          GITHUB_BASE_REF: ""
         run: |
           set -xeuo pipefail
-          unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
-          cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
           export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
           which sonar-scanner
-          sonar-scanner --debug \
-            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json
+          echo "Starting sonar-scanner in parallel"
 
-      - name: SonarQube Scan ruuvi.air.mcuboot
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          GITHUB_EVENT_NAME: ""
-          GITHUB_HEAD_REF: ""
-          GITHUB_BASE_REF: ""
-        run: |
-          set -xeuo pipefail
-          unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
-          cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
-          export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
-          which sonar-scanner
-          sonar-scanner --debug \
-            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json
+          (
+            echo "[========== START SonarQube Scan: ruuvi.air.main ]"
+            cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
+            sonar-scanner --debug \
+              --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+              --define sonar.coverageReportPaths=coverage.xml
+            echo "[========== END SonarQube Scan: ruuvi.air.main]"
+          ) >/tmp/sonar-scan-ruuvi.air.main.log 2>&1 &
+          PID_A=$!
 
-      - name: SonarQube Scan ruuvi.air.fw_loader
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          GITHUB_EVENT_NAME: ""
-          GITHUB_HEAD_REF: ""
-          GITHUB_BASE_REF: ""
-        run: |
-          set -xeuo pipefail
-          unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
-          cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
-          export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
-          which sonar-scanner
-          sonar-scanner --debug \
-            --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json
+          (
+            echo "[========== START SonarQube Scan: ruuvi.air.b0 ]"
+            cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
+            sonar-scanner --debug \
+              --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+          ) >/tmp/sonar-scan-ruuvi.air.b0.log 2>&1 &
+          PID_B=$!
+
+          (
+            echo "[========== START SonarQube Scan: ruuvi.air.mcuboot ]"
+            cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
+            sonar-scanner --debug \
+              --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+          ) >/tmp/sonar-scan-ruuvi.air.mcuboot.log 2>&1 &
+          PID_C=$!
+
+          (
+            echo "[========== START SonarQube Scan: ruuvi.air.fw_loader ]"
+            cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
+            sonar-scanner --debug \
+              --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+          ) >/tmp/sonar-scan-ruuvi.air.fw_loader.log 2>&1 &
+          PID_D=$!
+
+          # Wait for all tasks but DO NOT stop the script if any fails
+          FAIL=0
+
+          wait $PID_A || FAIL=1
+          wait $PID_B || FAIL=1
+          wait $PID_C || FAIL=1
+          wait $PID_D || FAIL=1
+
+          echo "========================================"
+          echo "LOG: SonarQube Scan: ruuvi.air.main"
+          echo "========================================"
+          cat /tmp/sonar-scan-ruuvi.air.main.log
+          echo "========================================"
+          echo "LOG: SonarQube Scan: ruuvi.air.b0"
+          echo "========================================"
+          cat /tmp/sonar-scan-ruuvi.air.b0.log
+          echo "========================================"
+          echo "LOG: SonarQube Scan: ruuvi.air.mcuboot"
+          echo "========================================"
+          cat /tmp/sonar-scan-ruuvi.air.mcuboot.log
+          echo "========================================"
+          echo "LOG: SonarQube Scan: ruuvi.air.fw_loader"
+          echo "========================================"
+          cat /tmp/sonar-scan-ruuvi.air.fw_loader.log
+
+          # Fail the step if any task failed
+          if [ "$FAIL" -ne 0 ]; then
+            echo "❌ One or more tasks failed"
+            exit 1
+          fi
+          echo "✅ All tasks completed successfully"
