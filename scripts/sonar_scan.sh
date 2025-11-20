@@ -38,7 +38,6 @@ twister -c -p native_sim -v -T . --coverage --coverage-tool gcovr
 gcovr \
   --object-directory twister-out \
   --sonarqube \
-  --verbose \
   --output coverage.xml \
   --exclude 'tests/.*' \
   --exclude 'components/.*'
@@ -58,27 +57,26 @@ if [ "$SONAR_TOKEN_ruuvi_air" = "" ]; then
 else
   export SONAR_TOKEN=$SONAR_TOKEN_ruuvi_air
   sonar-scanner --debug \
-    --define sonar.cfamily.build-wrapper-output="build-sonar/bw-output" \
+    --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
     --define sonar.coverageReportPaths=coverage.xml \
-    --define sonar.host.url=https://sonarcloud.io \
     --define sonar.cfamily.threads=$(nproc)
+  rm -rf .scannerwork
   cd b0_hook
   sonar-scanner --debug \
-    --define sonar.cfamily.build-wrapper-output="../build-sonar/bw-output" \
-    --define sonar.host.url=https://sonarcloud.io \
+    --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
     --define sonar.cfamily.threads=$(nproc)
+  rm -rf .scannerwork
   cd ../mcuboot_hook
   sonar-scanner --debug \
-    --define sonar.cfamily.build-wrapper-output="../build-sonar/bw-output" \
-    --define sonar.host.url=https://sonarcloud.io \
+    --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
     --define sonar.cfamily.threads=$(nproc)
+  rm -rf .scannerwork
   cd ../fw_loader
   sonar-scanner --debug \
-    --define sonar.cfamily.build-wrapper-output="../build-sonar/bw-output" \
-    --define sonar.host.url=https://sonarcloud.io \
+    --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
     --define sonar.cfamily.threads=$(nproc)
+  rm -rf .scannerwork
   cd ..
   rm -f coverage.xml
   rm -rf build-sonar
-  rm -rf .scannerwork
 fi
