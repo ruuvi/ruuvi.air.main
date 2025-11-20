@@ -46,17 +46,18 @@ find . -type f -name '*.gcna' -exec rm -f {} \;
 find . -type f -name "*.gcov" -exec rm -f {} \;
 find . -type f -name 'gtestresults.xml' -exec rm -f {} \;
 rm -rf .scannerwork || true
+rm -rf b0_hook/.scannerwork || true
+rm -rf mcuboot_hook/.scannerwork || true
+rm -rf fw_loader/.scannerwork || true
 rm -rf build-sonar || true
 rm -rf twister-out || true
 rm -f coverage.xml || true
 
-# PROJECT_DIR=$(basename "$PWD")
-PROJECT_DIR="ruuvi.air"
+PROJECT_DIR=$(basename "$PWD")
 NCS_VERSION="v2.8.0"
 KEYS_DIR="$HOME/.signing_keys"
 NCS_DOCKER_DIR="$HOME/ncs_docker"
-# USERNAME="$(id -un)"
-USERNAME="runner"
+USERNAME="$(id -un)"
 
 # --- Print info ---
 echo ">>> Building firmware in Docker"
@@ -73,12 +74,11 @@ mkdir -p "$NCS_DOCKER_DIR/ncs/${NCS_VERSION}"
 mkdir -p "$NCS_DOCKER_DIR/ncs/toolchains"
 mkdir -p "$NCS_DOCKER_DIR/.nrfutil"
 
-  # --network none \
-  # --cap-drop NET_ADMIN \
-  # --cap-drop NET_RAW \
-  # --cap-drop NET_BIND_SERVICE \
-
 docker run --rm -it \
+  --network none \
+  --cap-drop NET_ADMIN \
+  --cap-drop NET_RAW \
+  --cap-drop NET_BIND_SERVICE \
   --user "$(id -u)":"$(id -g)" \
   -e HOME=/home/$USERNAME \
   -e USER=$USERNAME \
@@ -86,7 +86,6 @@ docker run --rm -it \
   -e HOST_GID="$(id -g)" \
   -e HOST_USER=$USERNAME \
   -e HOST_GROUP="$(id -gn)" \
-  -e SONAR_TOKEN="${SONAR_TOKEN_ruuvi_air:-}" \
   -v "$NCS_DOCKER_DIR:/home/$USERNAME" \
   -v "$(pwd):/home/$USERNAME/ncs/${NCS_VERSION}/${PROJECT_DIR}" \
   -v "$KEYS_DIR:/home/$USERNAME/.signing_keys:ro" \
@@ -119,7 +118,6 @@ docker run --rm -it \
     gcovr \
       --object-directory twister-out \
       --sonarqube \
-      --verbose \
       --output coverage.xml \
       --exclude "tests/.*" \
       --exclude "components/.*"
@@ -133,23 +131,43 @@ docker run --rm -it \
     find . -type f -name "gtestresults.xml" -exec rm -f {} \;
     rm -rf twister-out
 
-    if [ ! -z "$SONAR_TOKEN" ]; then
-      sonar-scanner --debug \
-        --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
-        --define sonar.coverageReportPaths=coverage.xml
-    fi
+    # if [ ! -z "$SONAR_TOKEN" ]; then
+    #   sonar-scanner --debug \
+    #     --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
+    #     --define sonar.coverageReportPaths=coverage.xml
+    # fi
   '
 
 which sonar-scanner
 sonar-scanner --version
 
-# if [ "$SONAR_TOKEN_ruuvi_air" = "" ]; then
-#   echo Warnings: Environment variable "SONAR_TOKEN_ruuvi_air" is not set
-#   echo "Skipping SonarQube scan"
-# else
-#   export SONAR_TOKEN=$SONAR_TOKEN_ruuvi_air
-#   cd $PRJ_ABS_PATH
-#   sonar-scanner --debug \
-#     --define sonar.cfamily.compile-commands=$PRJ_ABS_PATH/build-sonar/bw-output/compile_commands.json \
-#     --define sonar.coverageReportPaths=$PRJ_ABS_PATH/coverage.xml
-# fi
+if [ "$SONAR_TOKEN_ruuvi_air" = "" ]; then
+  echo Warnings: Environment variable "SONAR_TOKEN_ruuvi_air" is not set
+  echo "Skipping SonarQube scan"
+else
+  export SONAR_TOKEN=$SONAR_TOKEN_ruuvi_air
+  cd $PRJ_ABS_PATH
+  sonar-scanner --debug \
+    --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
+    --define sonar.coverageReportPaths=coverage.xml \
+    --define sonar.cfamily.threads=$(nproc)
+  rm -rf .scannerwork
+  cd b0_hook
+  sonar-scanner --debug \
+    --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+    --define sonar.cfamily.threads=$(nproc)
+  rm -rf .scannerwork
+  cd ../mcuboot_hook
+  sonar-scanner --debug \
+    --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+    --define sonar.cfamily.threads=$(nproc)
+  rm -rf .scannerwork
+  cd ../fw_loader
+  sonar-scanner --debug \
+    --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+    --define sonar.cfamily.threads=$(nproc)
+  rm -rf .scannerwork
+  cd ..
+  rm -f coverage.xml
+  rm -rf build-sonar
+fi

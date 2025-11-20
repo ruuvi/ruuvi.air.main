@@ -7,6 +7,9 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <zephyr/dsp/types.h>
+#include <opt4060.h>
+#include <zephyr/drivers/sensor.h>
 #include "rgb_led_types.h"
 
 #ifdef __cplusplus
@@ -16,10 +19,19 @@ extern "C" {
 void
 opt_rgb_ctrl_init(const rgb_led_exp_current_coefs_t* const p_led_currents_alpha);
 
+bool
+opt_rgb_ctrl_is_opt4060_ready(void);
+
+bool
+opt_rgb_ctrl_get_opt4060_measurement(
+    const enum sensor_channel        chan,
+    float32_t* const                 p_val,
+    opt4060_measurement_cnt_t* const p_cnt);
+
 void
 opt_rgb_ctrl_measure_luminosity(void);
 
-float
+float32_t
 opt_rgb_ctrl_get_luminosity(void);
 
 void

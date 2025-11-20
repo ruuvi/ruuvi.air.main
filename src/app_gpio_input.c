@@ -24,7 +24,7 @@ app_gpio_input_init(
         return;
     }
 
-    int ret = gpio_pin_configure_dt(p_gpio_dt, GPIO_INPUT | extra_flags);
+    int32_t ret = gpio_pin_configure_dt(p_gpio_dt, GPIO_INPUT | extra_flags);
     if (ret != 0)
     {
         LOG_ERR("Failed to configure %s pin %d, res=%d", p_gpio_dt->port->name, p_gpio_dt->pin, ret);
@@ -40,7 +40,7 @@ app_gpio_input_init(
             return;
         }
 
-        if (0 != (int_flags & GPIO_INT_ENABLE) && (NULL != cb_handler) && (NULL != p_gpio_callback))
+        if ((0 != (int_flags & GPIO_INT_ENABLE)) && (NULL != cb_handler) && (NULL != p_gpio_callback))
         {
             LOG_INF("Set up GPIO callback at %s pin %d", p_gpio_dt->port->name, p_gpio_dt->pin);
             gpio_init_callback(p_gpio_callback, cb_handler, BIT(p_gpio_dt->pin));

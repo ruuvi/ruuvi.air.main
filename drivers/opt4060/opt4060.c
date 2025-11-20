@@ -17,21 +17,7 @@
 
 LOG_MODULE_REGISTER(opt4060, CONFIG_SENSOR_LOG_LEVEL);
 
-enum opt4060_e {
-	OPT4060_REG_MEASUREMENTS = 0x00,
-	OPT4060_REG_CH0_MSB = 0x00,
-	OPT4060_REG_CH0_LSB = 0x01,
-	OPT4060_REG_CH1_MSB = 0x02,
-	OPT4060_REG_CH1_LSB = 0x03,
-	OPT4060_REG_CH2_MSB = 0x04,
-	OPT4060_REG_CH2_LSB = 0x05,
-	OPT4060_REG_CH3_MSB = 0x06,
-	OPT4060_REG_CH3_LSB = 0x07,
-	OPT4060_REG_CONFIG = 0x0A,
-	OPT4060_REG_CONFIG2 = 0x0B,
-	OPT4060_REG_FLAGS = 0x0C,
-	OPT4060_REG_DEVICE_ID = 0x11,
-};
+#define NRF_TWIM_FREQ_390K 0x06200000UL
 
 #define OPT4060_VAL_DEVICE_ID (0x0821)
 
@@ -99,33 +85,103 @@ enum opt4060_e {
 
 #define OPT4060_READ_CHAN_CNT_MAX_RETRIES (3)
 
-int opt4060_i2c_write_read(const struct device *i2c_dev, uint16_t addr, const void *write_buf,
-			   size_t num_write, void *read_buf, size_t num_read)
+#define OPT4060_I2C_MSG_RX_TX_ARRAY_SIZE (2)
+
+#if !defined(BITS_PER_BYTE)
+#define BITS_PER_BYTE (8U)
+#else
+_Static_assert(BITS_PER_BYTE == 8U, "BITS_PER_BYTE != 8"); // NOSONAR
+#endif
+
+#if !defined(BYTE_MASK)
+#define BYTE_MASK (0xFFU)
+#else
+_Static_assert(BYTE_MASK == 0xFFU, "BYTE_MASK != 0xFFU"); // NOSONAR
+#endif
+
+#if !defined(UINT16_NUM_BYTES)
+#define UINT16_NUM_BYTES (2U)
+#else
+_Static_assert(UINT16_NUM_BYTES == 2U, "UINT16_NUM_BYTES != 2"); // NOSONAR
+#endif
+
+#define HAMMING_WEIGHT32_MASK_1  0x55555555U /* 0101... */
+#define HAMMING_WEIGHT32_MASK_2  0x33333333U /* 0011... */
+#define HAMMING_WEIGHT32_MASK_4  0x0F0F0F0FU /* 00001111... */
+#define HAMMING_WEIGHT32_MASK_16 0x0000FFFFU
+
+#define HAMMING_WEIGHT32_SHIFT_1  1U
+#define HAMMING_WEIGHT32_SHIFT_2  2U
+#define HAMMING_WEIGHT32_SHIFT_4  4U
+#define HAMMING_WEIGHT32_SHIFT_8  8U
+#define HAMMING_WEIGHT32_SHIFT_16 16U
+
+#define PARITY_MODULUS 2U
+
+#define SENSOR_VALUE_FRACTIONAL_MULTIPLIER 1000000UL
+
+#define OPT4060_CHAN_NORMALIZATION_COEF_NUMERATOR_RED          24U
+#define OPT4060_CHAN_NORMALIZATION_COEF_NUMERATOR_GREEN        10U
+#define OPT4060_CHAN_NORMALIZATION_COEF_NUMERATOR_BLUE         13U
+#define OPT4060_CHAN_NORMALIZATION_COEF_DENOMINATOR_RGB        10U
+#define OPT4060_CHAN_NORMALIZATION_COEF_NUMERATOR_LUMINOSITY   43U
+#define OPT4060_CHAN_NORMALIZATION_COEF_DENOMINATOR_LUMINOSITY 20000U
+
+#define OPT4060_MAX_MEASURE_PERIOD_US (10U * 1000U * 1000U)
+
+enum opt4060_e {
+	OPT4060_REG_MEASUREMENTS = 0x00,
+	OPT4060_REG_CH0_MSB = 0x00,
+	OPT4060_REG_CH0_LSB = 0x01,
+	OPT4060_REG_CH1_MSB = 0x02,
+	OPT4060_REG_CH1_LSB = 0x03,
+	OPT4060_REG_CH2_MSB = 0x04,
+	OPT4060_REG_CH2_LSB = 0x05,
+	OPT4060_REG_CH3_MSB = 0x06,
+	OPT4060_REG_CH3_LSB = 0x07,
+	OPT4060_REG_CONFIG = 0x0A,
+	OPT4060_REG_CONFIG2 = 0x0B,
+	OPT4060_REG_FLAGS = 0x0C,
+	OPT4060_REG_DEVICE_ID = 0x11,
+};
+
+opt4060_ret_t opt4060_i2c_write_read(const struct device *i2c_dev, uint16_t addr,
+				     const void *write_buf, size_t num_write, void *read_buf,
+				     size_t num_read)
 {
-	struct i2c_msg msg[2];
+	const uint8_t *const p_wbuf = write_buf;
+	uint8_t *const p_rbuf = read_buf;
 
-	msg[0].buf = (uint8_t *)write_buf;
-	msg[0].len = num_write;
-	msg[0].flags = I2C_MSG_WRITE | I2C_MSG_RESTART;
+	struct i2c_msg msg[OPT4060_I2C_MSG_RX_TX_ARRAY_SIZE] = {
+		[0] =
+			{
+				.buf = (uint8_t *)p_wbuf, // NOSONAR: cast required by Zephyr I2C
+							  // API, buffer not modified
+				.len = num_write,
+				.flags = I2C_MSG_WRITE | I2C_MSG_RESTART,
+			},
+		[1] =
+			{
+				.buf = p_rbuf,
+				.len = num_read,
+				.flags = I2C_MSG_RESTART | I2C_MSG_READ | I2C_MSG_STOP,
+			},
+	};
 
-	msg[1].buf = (uint8_t *)read_buf;
-	msg[1].len = num_read;
-	msg[1].flags = I2C_MSG_RESTART | I2C_MSG_READ | I2C_MSG_STOP;
-
-	return i2c_transfer(i2c_dev, msg, 2, addr);
+	return i2c_transfer(i2c_dev, msg, ARRAY_SIZE(msg), addr);
 }
 
 static bool opt4060_reg_read(const struct device *const p_dev, const enum opt4060_e reg,
 			     uint16_t *const p_val)
 {
-	const struct opt4060_config *p_config = p_dev->config;
+	const opt4060_config_t *p_config = p_dev->config;
 	uint8_t value[2] = {0};
 
 	if (0 != i2c_burst_read_dt(&p_config->i2c, (uint8_t)reg, &value[0], sizeof(value))) {
 		return false;
 	}
 
-	*p_val = ((uint16_t)value[0] << 8) + value[1];
+	*p_val = (uint16_t)((uint16_t)value[0] << BITS_PER_BYTE) + value[1];
 
 	return true;
 }
@@ -133,15 +189,16 @@ static bool opt4060_reg_read(const struct device *const p_dev, const enum opt406
 static bool opt4060_bulk_read(const struct device *const p_dev, const enum opt4060_e reg,
 			      uint16_t *const p_arr, const size_t arr_len)
 {
-	const struct opt4060_config *p_config = p_dev->config;
+	const opt4060_config_t *p_config = p_dev->config;
 
 	uint8_t *const p_arr_u8 = (uint8_t *)p_arr;
 	if (0 != i2c_burst_read_dt(&p_config->i2c, (uint8_t)reg, &p_arr_u8[0],
 				   sizeof(uint16_t) * arr_len)) {
 		return false;
 	}
-	for (int i = 0; i < arr_len; ++i) {
-		p_arr[i] = ((uint16_t)p_arr_u8[i * 2 + 0] << 8) + p_arr_u8[i * 2 + 1];
+	for (int32_t i = 0; i < arr_len; ++i) {
+		p_arr[i] = (uint16_t)((uint16_t)p_arr_u8[i * UINT16_NUM_BYTES] << BITS_PER_BYTE) +
+			   p_arr_u8[(i * UINT16_NUM_BYTES) + 1];
 	}
 
 	return true;
@@ -150,9 +207,10 @@ static bool opt4060_bulk_read(const struct device *const p_dev, const enum opt40
 static bool opt4060_reg_write(const struct device *const p_dev, const enum opt4060_e reg,
 			      const uint16_t val)
 {
-	const struct opt4060_config *p_config = p_dev->config;
+	const opt4060_config_t *p_config = p_dev->config;
 
-	const uint8_t tx_buf[] = {(uint8_t)reg, (uint8_t)(val >> 8U), (uint8_t)(val & 0xFFU)};
+	const uint8_t tx_buf[] = {(uint8_t)reg, (uint8_t)(val >> BITS_PER_BYTE),
+				  (uint8_t)(val & BYTE_MASK)};
 
 	if (0 != i2c_write_dt(&p_config->i2c, tx_buf, sizeof(tx_buf))) {
 		return false;
@@ -184,16 +242,18 @@ static bool opt4060_reg_update(const struct device *const p_dev, const enum opt4
  */
 static uint32_t hamming_weight32(const uint32_t val)
 {
-	uint32_t res = val - ((val >> 1) & 0x55555555U);
-	res = (res & 0x33333333U) + ((res >> 2) & 0x33333333U);
-	res = (res + (res >> 4U)) & 0x0F0F0F0FU;
-	res = res + (res >> 8U);
-	return (res + (res >> 16U)) & 0x000000FFU;
+	uint32_t res = val - ((val >> HAMMING_WEIGHT32_SHIFT_1) & HAMMING_WEIGHT32_MASK_1);
+	res = (res & HAMMING_WEIGHT32_MASK_2) +
+	      ((res >> HAMMING_WEIGHT32_SHIFT_2) & HAMMING_WEIGHT32_MASK_2);
+	res = (res + (res >> HAMMING_WEIGHT32_SHIFT_4)) & HAMMING_WEIGHT32_MASK_4;
+	res = res + (res >> HAMMING_WEIGHT32_SHIFT_8);
+	return (res + (res >> HAMMING_WEIGHT32_SHIFT_16)) & HAMMING_WEIGHT32_MASK_16;
 }
 
 static uint32_t opt4060_xor(const uint8_t exp, const uint32_t mantissa, const uint8_t cnt)
 {
-	return (hamming_weight32(mantissa) + hamming_weight32(exp) + hamming_weight32(cnt)) % 2U;
+	return (hamming_weight32(mantissa) + hamming_weight32(exp) + hamming_weight32(cnt)) %
+	       PARITY_MODULUS;
 }
 
 /**
@@ -204,10 +264,10 @@ static uint32_t opt4060_xor(const uint8_t exp, const uint32_t mantissa, const ui
  */
 static uint8_t opt4060_calc_crc(const uint8_t exp, const uint32_t mantissa, const uint8_t cnt)
 {
-	uint8_t crc = opt4060_xor(exp, mantissa, cnt);
-	crc |= opt4060_xor(exp & 0xAU, mantissa & 0xAAAAAU, cnt & 0xAU) << 1U;
-	crc |= opt4060_xor(exp & 0x8U, mantissa & 0x88888U, cnt & 0x8U) << 2U;
-	crc |= opt4060_xor(exp & 0x0U, mantissa & 0x80808U, cnt & 0x0U) << 3U;
+	uint8_t crc = (uint8_t)opt4060_xor(exp, mantissa, cnt);
+	crc |= (uint8_t)opt4060_xor(exp & 0xAU, mantissa & 0xAAAAAU, cnt & 0xAU) << 1U; // NOSONAR
+	crc |= (uint8_t)opt4060_xor(exp & 0x8U, mantissa & 0x88888U, cnt & 0x8U) << 2U; // NOSONAR
+	crc |= (uint8_t)opt4060_xor(exp & 0x0U, mantissa & 0x80808U, cnt & 0x0U) << 3U; // NOSONAR
 
 	return crc;
 }
@@ -215,10 +275,11 @@ static uint8_t opt4060_calc_crc(const uint8_t exp, const uint32_t mantissa, cons
 static bool opt4060_decode_raw(const uint16_t raw_msb, const uint16_t raw_lsb,
 			       opt4060_ch_data_t *const p_data)
 {
-	const uint8_t crc = raw_lsb & 0x0FU;
-	p_data->exponent = (raw_msb >> 12U) & 0x0FU;
-	p_data->cnt = (raw_lsb >> 4U) & 0x0FU;
-	p_data->mantissa = ((uint32_t)(raw_msb & 0x0FFFU) << 8U) + (raw_lsb >> 8U);
+	const uint8_t crc = raw_lsb & 0x0FU;                                  // NOSONAR
+	p_data->exponent = (raw_msb >> 12U) & 0x0FU;                          // NOSONAR
+	p_data->cnt = (raw_lsb >> 4U) & 0x0FU;                                // NOSONAR
+	p_data->mantissa = ((uint32_t)(raw_msb & 0x0FFFU) << BITS_PER_BYTE) + // NOSONAR
+			   (raw_lsb >> BITS_PER_BYTE);
 
 	const uint8_t calc_crc = opt4060_calc_crc(p_data->exponent, p_data->mantissa, p_data->cnt);
 	if (calc_crc != crc) {
@@ -231,16 +292,16 @@ static bool opt4060_decode_raw(const uint16_t raw_msb, const uint16_t raw_lsb,
 
 static void opt4060_set_invalid_for_all_channels(const struct device *const p_dev)
 {
-	struct opt4060_data *const p_data = p_dev->data;
-	for (int chan = 0; chan < OPT4060_CHANNEL_NUM; ++chan) {
+	opt4060_data_t *const p_data = p_dev->data;
+	for (int32_t chan = 0; chan < OPT4060_CHANNEL_NUM; ++chan) {
 		p_data->ch_data[chan].is_valid = false;
 	}
 }
 
-#if CONFIG_OPT4060_OP_MODE_ONESHOT
+#if defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
 static void opt4060_set_overflow_for_all_channels(const struct device *const p_dev)
 {
-	struct opt4060_data *const p_data = p_dev->data;
+	opt4060_data_t *const p_data = p_dev->data;
 	for (int chan = 0; chan < OPT4060_CHANNEL_NUM; ++chan) {
 		p_data->ch_data[chan].is_valid = false;
 		p_data->ch_data[chan].mantissa = OPT4060_OVERFLOW_MANTISSA;
@@ -248,11 +309,11 @@ static void opt4060_set_overflow_for_all_channels(const struct device *const p_d
 		p_data->ch_data[chan].cnt = 0;
 	}
 }
-#endif // CONFIG_OPT4060_OP_MODE_ONESHOT
+#endif // defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
 
 bool opt4060_read_all_channels(const struct device *const p_dev)
 {
-	struct opt4060_data *const p_data = p_dev->data;
+	opt4060_data_t *const p_data = p_dev->data;
 
 	LOG_DBG("Read all channels");
 
@@ -265,8 +326,9 @@ bool opt4060_read_all_channels(const struct device *const p_dev)
 	}
 	LOG_HEXDUMP_DBG(raw_data, sizeof(raw_data), "Raw measurements");
 
-	for (int chan = 0; chan < OPT4060_CHANNEL_NUM; ++chan) {
-		if (!opt4060_decode_raw(raw_data[chan * 2], raw_data[chan * 2 + 1],
+	for (int32_t chan = 0; chan < OPT4060_CHANNEL_NUM; ++chan) {
+		if (!opt4060_decode_raw(raw_data[chan * UINT16_NUM_BYTES],
+					raw_data[(chan * UINT16_NUM_BYTES) + 1],
 					&p_data->ch_data[chan])) {
 			LOG_ERR("OPT4060 channel %d: CRC error", chan);
 			continue;
@@ -279,29 +341,29 @@ bool opt4060_read_all_channels(const struct device *const p_dev)
 	return true;
 }
 
-static int opt4060_read_one_channel(const struct device *const p_dev,
-				    const enum sensor_channel sensor_chan)
+static opt4060_ret_t opt4060_read_one_channel(const struct device *const p_dev,
+					      const enum sensor_channel sensor_chan)
 {
-	struct opt4060_data *const p_data = p_dev->data;
+	opt4060_data_t *const p_data = p_dev->data;
 
-	int chan_idx = 0;
+	enum opt4060_channel_e chan_idx = OPT4060_CHANNEL_RED;
 	enum opt4060_e reg = OPT4060_REG_CH0_MSB;
 	switch (sensor_chan) {
 	case SENSOR_CHAN_RED:
 		reg = OPT4060_REG_CH0_MSB;
-		chan_idx = 0;
+		chan_idx = OPT4060_CHANNEL_RED;
 		break;
 	case SENSOR_CHAN_GREEN:
 		reg = OPT4060_REG_CH1_MSB;
-		chan_idx = 1;
+		chan_idx = OPT4060_CHANNEL_GREEN;
 		break;
 	case SENSOR_CHAN_BLUE:
 		reg = OPT4060_REG_CH2_MSB;
-		chan_idx = 2;
+		chan_idx = OPT4060_CHANNEL_BLUE;
 		break;
 	case SENSOR_CHAN_LIGHT:
 		reg = OPT4060_REG_CH3_MSB;
-		chan_idx = 3;
+		chan_idx = OPT4060_CHANNEL_LUMINOSITY;
 		break;
 	default:
 		LOG_ERR("Unsupported sensor channel %d", sensor_chan);
@@ -309,7 +371,7 @@ static int opt4060_read_one_channel(const struct device *const p_dev,
 	}
 	LOG_DBG("Read one channel %d", chan_idx);
 
-	struct opt4060_ch_data *const p_ch_data = &p_data->ch_data[chan_idx];
+	opt4060_ch_data_t *const p_ch_data = &p_data->ch_data[chan_idx];
 
 	uint16_t raw_data[2] = {0};
 	if (!opt4060_bulk_read(p_dev, reg, &raw_data[0], ARRAY_SIZE(raw_data))) {
@@ -330,12 +392,12 @@ static int opt4060_read_one_channel(const struct device *const p_dev,
 	return 0;
 }
 
-#if CONFIG_OPT4060_TRIGGER
+#if defined(CONFIG_OPT4060_TRIGGER) && CONFIG_OPT4060_TRIGGER
 static int opt4060_trigger_drdy_set(const struct device *const p_dev,
 				    const struct sensor_trigger *const p_trig,
 				    sensor_trigger_handler_t handler)
 {
-	struct opt4060_data *const p_data = p_dev->data;
+	opt4060_data_t *const p_data = p_dev->data;
 
 	if (handler == NULL) {
 		return -EINVAL;
@@ -357,14 +419,15 @@ static int opt4060_trigger_set(const struct device *const p_dev,
 
 	return -ENOTSUP;
 }
-#endif
+#endif // defined(CONFIG_OPT4060_TRIGGER) && CONFIG_OPT4060_TRIGGER
 
-static int opt4060_sample_fetch(const struct device *const p_dev, const enum sensor_channel chan)
+static int opt4060_sample_fetch(const struct device *const p_dev, // NOSONAR: Zephyr API
+				const enum sensor_channel chan)
 {
 	__ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL);
 
-#if CONFIG_OPT4060_OP_MODE_ONESHOT
-	struct opt4060_data *const p_data = p_dev->data;
+#if defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
+	opt4060_data_t *const p_data = p_dev->data;
 	if (p_data->flag_one_shot_started) {
 		uint16_t flags = 0;
 		if (!opt4060_reg_read(p_dev, OPT4060_REG_FLAGS, &flags)) {
@@ -385,18 +448,18 @@ static int opt4060_sample_fetch(const struct device *const p_dev, const enum sen
 		p_data->flag_one_shot_started = false;
 		return -EIO;
 	}
-#else
+#else  // defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
 	LOG_DBG("Continuous mode is enabled, no need to start conversion");
 	return 0;
-#endif
+#endif // defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
 }
 
-static int opt4060_channel_get(const struct device *const p_dev, const enum sensor_channel chan,
-			       struct sensor_value *const p_val)
+static int // NOSONAR: Zephyr API
+opt4060_channel_get(const struct device *const p_dev, const enum sensor_channel chan,
+		    struct sensor_value *const p_val)
 {
-	struct opt4060_data *const p_data = p_dev->data;
-
-#if CONFIG_OPT4060_OP_MODE_ONESHOT
+#if defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
+	opt4060_data_t *const p_data = p_dev->data;
 	if (p_data->flag_one_shot_started) {
 		uint16_t flags = 0;
 		if (!opt4060_reg_read(p_dev, OPT4060_REG_FLAGS, &flags)) {
@@ -422,28 +485,29 @@ static int opt4060_channel_get(const struct device *const p_dev, const enum sens
 			}
 		}
 	}
-#else
-	int res = opt4060_read_one_channel(p_dev, chan);
+#else  // defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
+	const opt4060_data_t *const p_data = p_dev->data;
+	opt4060_ret_t res = opt4060_read_one_channel(p_dev, chan);
 	if (0 != res) {
 		LOG_DBG("Failed to read last data, res=%d", res);
 		return res;
 	}
-#endif
+#endif // defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
 
-	int chan_idx = 0;
+	int32_t chan_idx = 0;
 	uint32_t k = 0;
 	switch (chan) {
 	case SENSOR_CHAN_RED:
 		chan_idx = OPT4060_CHANNEL_RED;
-		k = 24;
+		k = OPT4060_CHAN_NORMALIZATION_COEF_NUMERATOR_RED;
 		break;
 	case SENSOR_CHAN_GREEN:
 		chan_idx = OPT4060_CHANNEL_GREEN;
-		k = 10;
+		k = OPT4060_CHAN_NORMALIZATION_COEF_NUMERATOR_GREEN;
 		break;
 	case SENSOR_CHAN_BLUE:
 		chan_idx = OPT4060_CHANNEL_BLUE;
-		k = 13;
+		k = OPT4060_CHAN_NORMALIZATION_COEF_NUMERATOR_BLUE;
 		break;
 	case SENSOR_CHAN_LIGHT:
 		chan_idx = OPT4060_CHANNEL_LUMINOSITY;
@@ -456,8 +520,8 @@ static int opt4060_channel_get(const struct device *const p_dev, const enum sens
 
 	const opt4060_ch_data_t *const p_ch_data = &p_data->ch_data[chan_idx];
 	if (!p_ch_data->is_valid) {
-		if ((p_ch_data->mantissa == OPT4060_OVERFLOW_MANTISSA) &&
-		    (p_ch_data->exponent == OPT4060_OVERFLOW_EXPONENT)) {
+		if ((OPT4060_OVERFLOW_MANTISSA == p_ch_data->mantissa) &&
+		    (OPT4060_OVERFLOW_EXPONENT == p_ch_data->exponent)) {
 			LOG_DBG("Channel %d: overflow", chan);
 			return -ERANGE;
 		}
@@ -467,21 +531,27 @@ static int opt4060_channel_get(const struct device *const p_dev, const enum sens
 
 	uint64_t uval = p_ch_data->mantissa;
 	uval <<= p_ch_data->exponent;
-	if (0 != k) {
+	if (OPT4060_CHANNEL_LUMINOSITY != chan_idx) {
 		const uint64_t tmp_val = uval * k;
-		p_val->val1 = tmp_val / 10;
-		p_val->val2 = (tmp_val % 10) * 100000;
-		p_val->val2 &= ~OPT4060_CHAN_CNT_MASK;
-		p_val->val2 |= p_ch_data->cnt & OPT4060_CHAN_CNT_MASK;
+		p_val->val1 = (uint32_t)(tmp_val / OPT4060_CHAN_NORMALIZATION_COEF_DENOMINATOR_RGB);
+		p_val->val2 = (tmp_val % OPT4060_CHAN_NORMALIZATION_COEF_DENOMINATOR_RGB) *
+			      (SENSOR_VALUE_FRACTIONAL_MULTIPLIER /
+			       OPT4060_CHAN_NORMALIZATION_COEF_DENOMINATOR_RGB);
 	} else {
 		// k = 0.00215 = 43 / 20000
-		const uint64_t tmp_val = uval * 43;
-		p_val->val1 = tmp_val / 20000;
-		p_val->val2 = (tmp_val % 20000) * 50;
+		const uint64_t tmp_val =
+			uval * OPT4060_CHAN_NORMALIZATION_COEF_NUMERATOR_LUMINOSITY;
+		p_val->val1 = (uint32_t)(tmp_val /
+					 OPT4060_CHAN_NORMALIZATION_COEF_DENOMINATOR_LUMINOSITY);
+		p_val->val2 = (tmp_val % OPT4060_CHAN_NORMALIZATION_COEF_DENOMINATOR_LUMINOSITY) *
+			      (SENSOR_VALUE_FRACTIONAL_MULTIPLIER /
+			       OPT4060_CHAN_NORMALIZATION_COEF_DENOMINATOR_LUMINOSITY);
 	}
 	// Encode cnt in the least significant 4 bits of val2
-	p_val->val2 &= ~OPT4060_CHAN_CNT_MASK;
-	p_val->val2 |= p_ch_data->cnt & OPT4060_CHAN_CNT_MASK;
+	uint32_t tmp_val2 = (uint32_t)p_val->val2;
+	tmp_val2 &= ~OPT4060_MEASUREMENT_CNT_MASK;
+	tmp_val2 |= p_ch_data->cnt & OPT4060_MEASUREMENT_CNT_MASK;
+	p_val->val2 = tmp_val2;
 	LOG_DBG("Fetch channel %d: exponent %d, mantissa %d, cnt %d, uval %lld, val: %d.%06d", chan,
 		p_ch_data->exponent, p_ch_data->mantissa, p_ch_data->cnt, uval, p_val->val1,
 		p_val->val2);
@@ -490,61 +560,36 @@ static int opt4060_channel_get(const struct device *const p_dev, const enum sens
 }
 
 static const struct sensor_driver_api opt4060_driver_api = {
-#if CONFIG_OPT4060_TRIGGER
+#if defined(CONFIG_OPT4060_TRIGGER) && CONFIG_OPT4060_TRIGGER
 	.trigger_set = &opt4060_trigger_set,
 #endif
 	.sample_fetch = &opt4060_sample_fetch,
 	.channel_get = &opt4060_channel_get,
 };
 
-uint32_t opt4060_get_conv_time_us(void)
+static opt4060_ret_t opt4060_read_chan_cnt(const struct device *const p_dev,
+					   const enum sensor_channel chan,
+					   opt4060_measurement_cnt_t *const p_cnt)
 {
-#if CONFIG_OPT4060_CONV_TIME_600_US
-	return 600;
-#elif CONFIG_OPT4060_CONV_TIME_1_MS
-	return 1000;
-#elif CONFIG_OPT4060_CONV_TIME_1_8_MS
-	return 1800;
-#elif CONFIG_OPT4060_CONV_TIME_3_4_MS
-	return 3400;
-#elif CONFIG_OPT4060_CONV_TIME_6_5_MS
-	return 6500;
-#elif CONFIG_OPT4060_CONV_TIME_12_7_MS
-	return 12700;
-#elif CONFIG_OPT4060_CONV_TIME_25_MS
-	return 25000;
-#elif CONFIG_OPT4060_CONV_TIME_50_MS
-	return 50000;
-#elif CONFIG_OPT4060_CONV_TIME_100_MS
-	return 100000;
-#elif CONFIG_OPT4060_CONV_TIME_200_MS
-	return 200000;
-#elif CONFIG_OPT4060_CONV_TIME_400_MS
-	return 400000;
-#elif CONFIG_OPT4060_CONV_TIME_800_MS
-	return 800000;
-#else
-#error "Unsupported conversion time"
-#endif
-}
-
-static int opt4060_read_chan_cnt(const struct device *const p_dev, const enum sensor_channel chan)
-{
-	struct opt4060_data *const p_data = p_dev->data;
-	for (int i = 0; i < OPT4060_READ_CHAN_CNT_MAX_RETRIES; ++i) {
+	opt4060_data_t *const p_data = p_dev->data;
+	for (int32_t i = 0; i < OPT4060_READ_CHAN_CNT_MAX_RETRIES; ++i) {
 		struct sensor_value val = {0};
 		const int64_t t1 = k_uptime_ticks();
-		int res = sensor_channel_get(p_dev, chan, &val);
+		opt4060_ret_t res = sensor_channel_get(p_dev, chan, &val);
 		const int64_t t2 = k_uptime_ticks();
 		if (0 == res) {
-			const int cnt = val.val2 & OPT4060_CHAN_CNT_MASK;
-			val.val2 &= ~OPT4060_CHAN_CNT_MASK;
-			// LOG_INF("Measured: %d.%06u, cnt=%d", val.val1, val.val2, cnt);
-			if (p_data->sensor_channel_get_cnt < 10) {
+			const uint32_t tmp_val2 = (uint32_t)val.val2;
+			const opt4060_measurement_cnt_t cnt =
+				tmp_val2 & OPT4060_MEASUREMENT_CNT_MASK;
+			val.val2 = tmp_val2 & ~OPT4060_MEASUREMENT_CNT_MASK;
+			LOG_DBG("Measured: %d.%06u, cnt=%u", val.val1, val.val2, cnt);
+			if (p_data->sensor_channel_get_cnt <
+			    OPT4060_MEASURE_MEASUREMENT_DURATION_NUM_CYCLES) {
 				p_data->sensor_channel_get_cnt += 1;
 				p_data->sensor_channel_get_accum_time += t2 - t1;
 			}
-			return cnt;
+			*p_cnt = cnt;
+			return 0;
 		}
 		if (-EAGAIN != res) {
 			LOG_ERR("%s: sensor_channel_get failed: %d", __func__, res);
@@ -556,28 +601,35 @@ static int opt4060_read_chan_cnt(const struct device *const p_dev, const enum se
 }
 
 static bool opt4060_wait_for_next_chan_cnt(const struct device *const p_dev,
-					   const enum sensor_channel chan, const int cur_cnt)
+					   const enum sensor_channel chan,
+					   const opt4060_measurement_cnt_t cur_cnt)
 {
-	const int next_cnt = (cur_cnt + 1) & OPT4060_CHAN_CNT_MASK;
-	const uint32_t timeout_us = (opt4060_get_conv_time_us() * 4 * 3 / 2 + 1000) * 10;
+	const opt4060_measurement_cnt_t next_cnt =
+		((uint32_t)cur_cnt + 1U) & OPT4060_MEASUREMENT_CNT_MASK;
+	const uint32_t timeout_us = (((OPT4060_CONV_TIME_US * OPT4060_CHANNEL_NUM) *
+				      OPT4060_TIMEOUT_MARGIN_MULTIPLIER_NUM) /
+				     OPT4060_TIMEOUT_MARGIN_MULTIPLIER_DEN) +
+				    OPT4060_TIMEOUT_EXTRA_US;
 	const uint64_t timeout_ticks = k_us_to_ticks_ceil32(timeout_us);
 	const int64_t time_start = k_uptime_ticks();
+	bool flag_timeout = false;
 	while (1) {
-		const int res = opt4060_read_chan_cnt(p_dev, chan);
+		opt4060_measurement_cnt_t cnt = 0;
+		const opt4060_ret_t res = opt4060_read_chan_cnt(p_dev, chan, &cnt);
 		if (res < 0) {
 			LOG_ERR("%s:%d", __FILE__, __LINE__);
 			return false;
 		}
-		if (res == next_cnt) {
+		if (cnt == next_cnt) {
 			break;
 		}
-		if (res != cur_cnt) {
-			LOG_ERR("%s:%d: res=%d, cur_cnt=%d, next_cnt=%d", __FILE__, __LINE__, res,
+		if (cnt != cur_cnt) {
+			LOG_ERR("%s:%d: res=%d, cur_cnt=%u, next_cnt=%u", __FILE__, __LINE__, res,
 				cur_cnt, next_cnt);
 			return false;
 		}
 		const int64_t time_end = k_uptime_ticks();
-		if ((time_end - time_start) > timeout_ticks) {
+		if (flag_timeout) {
 			LOG_ERR("%s:%d: time_start=%" PRId64 ", time_end=%" PRId64
 				", delta=%" PRId64 ", timeout_us=%" PRIu32
 				", timeout_ticks=%" PRId64,
@@ -585,22 +637,28 @@ static bool opt4060_wait_for_next_chan_cnt(const struct device *const p_dev,
 				timeout_us, timeout_ticks);
 			return false;
 		}
+		if ((time_end - time_start) > timeout_ticks) {
+			// Check if counter is changed after timeout expired
+			flag_timeout = true;
+		}
 	}
 	return true;
 }
 
 static bool opt4060_measure_period(const struct device *const p_dev)
 {
-	struct opt4060_data *const p_data = p_dev->data;
+	opt4060_data_t *const p_data = p_dev->data;
 	const enum sensor_channel chan = SENSOR_CHAN_GREEN;
-	const uint32_t conv_time_us = opt4060_get_conv_time_us();
 	const uint32_t max_wait_time_us =
-		(10000000 < (conv_time_us * 16)) ? 10000000 : (conv_time_us * 16);
+		(OPT4060_MAX_MEASURE_PERIOD_US < (OPT4060_CONV_TIME_US * 16))
+			? OPT4060_MAX_MEASURE_PERIOD_US
+			: (OPT4060_CONV_TIME_US * 16);
 	const int64_t max_wait_time_ticks = k_us_to_ticks_ceil32(max_wait_time_us);
 	uint32_t cycle_cnt = 0;
 
-	int cur_cnt = opt4060_read_chan_cnt(p_dev, chan);
-	if (cur_cnt < 0) {
+	opt4060_measurement_cnt_t cur_cnt = 0;
+	opt4060_ret_t res = opt4060_read_chan_cnt(p_dev, chan, &cur_cnt);
+	if (res < 0) {
 		LOG_ERR("%s:%d", __FILE__, __LINE__);
 		return false;
 	}
@@ -611,8 +669,7 @@ static bool opt4060_measure_period(const struct device *const p_dev)
 	const int64_t time_start = k_uptime_ticks();
 	while (1) {
 		cycle_cnt += 1;
-		cur_cnt += 1;
-		cur_cnt &= OPT4060_CHAN_CNT_MASK;
+		cur_cnt = (opt4060_measurement_cnt_t)(cur_cnt + 1) & OPT4060_MEASUREMENT_CNT_MASK;
 		if (!opt4060_wait_for_next_chan_cnt(p_dev, chan, cur_cnt)) {
 			LOG_ERR("%s:%d", __FILE__, __LINE__);
 			return false;
@@ -620,13 +677,16 @@ static bool opt4060_measure_period(const struct device *const p_dev)
 		const int64_t delta_time_ticks = k_uptime_ticks() - time_start;
 		if (delta_time_ticks > max_wait_time_ticks) {
 			p_data->one_measurement_duration_ticks =
-				(int32_t)((delta_time_ticks + (cycle_cnt * 4 / 2)) /
-					  (cycle_cnt * 4));
+				(int32_t)((delta_time_ticks +
+					   (cycle_cnt *
+					    (OPT4060_CHANNEL_NUM / OPT4060_ROUND_HALF_DIVISOR))) /
+					  (cycle_cnt * OPT4060_CHANNEL_NUM));
 			p_data->sensor_channel_get_duration_ticks =
 				(int32_t)((p_data->sensor_channel_get_accum_time +
-					   (p_data->sensor_channel_get_cnt / 2)) /
+					   (p_data->sensor_channel_get_cnt /
+					    OPT4060_ROUND_HALF_DIVISOR)) /
 					  p_data->sensor_channel_get_cnt);
-			LOG_INF("Configured conv time: %" PRIu32 " us", conv_time_us);
+			LOG_INF("Configured conv time: %" PRIu32 " us", OPT4060_CONV_TIME_US);
 			LOG_INF("Max wait time: %" PRIu32 " us, %" PRId64 " ticks",
 				max_wait_time_us, max_wait_time_ticks);
 			LOG_INF("Delta time: %" PRId64 " ticks, cycle_cnt=%" PRIu32,
@@ -642,7 +702,7 @@ static bool opt4060_measure_period(const struct device *const p_dev)
 
 int32_t opt4060_get_one_measurement_duration_ticks(const struct device *const p_dev)
 {
-	struct opt4060_data *const p_data = p_dev->data;
+	const opt4060_data_t *const p_data = p_dev->data;
 	return p_data->one_measurement_duration_ticks;
 }
 
@@ -650,28 +710,31 @@ static void opt4060_set_fast_speed_i2c(void)
 {
 	static NRF_TWIM_Type *const g_p_twim = (NRF_TWIM_Type *)0x40003000;
 	/*
-		https://docs.nordicsemi.com/bundle/errata_nRF52840_Rev3/page/ERR/nRF52840/Rev3/latest/anomaly_840_219.html#anomaly_840_219
+		https://docs.nordicsemi.com/bundle/errata_nRF52840_Rev3/page/ERR/
+		nRF52840/Rev3/latest/anomaly_840_219.html#anomaly_840_219
 
 		Symptom:
 		The low period of the SCL clock is too short to meet the I2C specification at 400
-	   kHz. The actual low period of the SCL clock is 1.25 µs while the I2C specification
-	   requires the SCL clock to have a minimum low period of 1.3 µs.
+		kHz. The actual low period of the SCL clock is 1.25 µs while the I2C specification
+		requires the SCL clock to have a minimum low period of 1.3 µs.
 
 		Workaround:
 		If communication does not work at 400 kHz with an I2C compatible device that
-	   requires the SCL clock to have a minimum low period of 1.3 µs, use 390 kHz instead of
-	   400kHz by writing 0x06200000 to the FREQUENCY register. With this setting, the SCL low
-	   period is greater than 1.3 µs.
+		requires the SCL clock to have a minimum low period of 1.3 µs, use 390 kHz instead
+	   of 400kHz by writing 0x06200000 to the FREQUENCY register. With this setting, the SCL low
+		period is greater than 1.3 µs.
+
+		To set TWI frequency to 400 kHz, use constant NRF_TWIM_FREQ_400K defined in
+		nrf_twim.h. Its value is 0x06400000UL.
 	*/
-	// nrf_twim_frequency_set(g_p_twim, NRF_TWIM_FREQ_400K); // Set TWI frequency to 400 kHz
-	// (FREQ=0x06400000UL)
-	nrf_twim_frequency_set(g_p_twim, 0x06200000); // Set TWI frequency to 390 kHz
+	nrf_twim_frequency_set(g_p_twim, NRF_TWIM_FREQ_390K); // Set TWI frequency to 390 kHz
 }
 
-static int opt4060_init(const struct device *const p_dev)
+static int // NOSONAR: Zephyr API
+opt4060_init(const struct device *const p_dev)
 {
-	const struct opt4060_config *const p_config = p_dev->config;
-	struct opt4060_data *const p_data = p_dev->data;
+	const opt4060_config_t *const p_config = p_dev->config;
+	opt4060_data_t *const p_data = p_dev->data;
 
 	LOG_DBG("Init OPT4060, addr=0x%02x", p_config->i2c.addr);
 
@@ -693,7 +756,7 @@ static int opt4060_init(const struct device *const p_dev)
 
 #ifdef CONFIG_OPT4060_INT
 	if (p_config->gpio_int.port != NULL) {
-		const int res = opt4060_init_interrupt(p_dev);
+		const opt4060_ret_t res = opt4060_init_interrupt(p_dev);
 		if (0 != res) {
 			LOG_ERR("Failed to initialize interrupts.");
 			return res;
@@ -703,12 +766,13 @@ static int opt4060_init(const struct device *const p_dev)
 
 	p_data->cfg_reg = OPT4060_REG_CONFIG_VAL_LATCH | OPT4060_REG_CONFIG_VAL_INT_POL_ACTIVE_LOW;
 
-#if CONFIG_OPT4060_QUICK_WAKEUP
+#if defined(CONFIG_OPT4060_QUICK_WAKEUP) && CONFIG_OPT4060_QUICK_WAKEUP
 	p_data->cfg_reg |= OPT4060_REG_CONFIG_VAL_QWAKE_ON;
 #endif
 
-#if CONFIG_OPT4060_OP_MODE_ONESHOT
-#if CONFIG_OPT4060_OP_MODE_ONE_SHOT_FORCED_AUTO_RANGE
+#if defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
+#if defined(CONFIG_OPT4060_OP_MODE_ONE_SHOT_FORCED_AUTO_RANGE) &&                                  \
+	CONFIG_OPT4060_OP_MODE_ONE_SHOT_FORCED_AUTO_RANGE
 	p_data->cfg_reg |= OPT4060_REG_CONFIG_VAL_OPERATING_MODE_FORCED_ONESHOT;
 #else
 	p_data->cfg_reg |= OPT4060_REG_CONFIG_VAL_OPERATING_MODE_ONESHOT;
@@ -717,59 +781,14 @@ static int opt4060_init(const struct device *const p_dev)
 	p_data->cfg_reg |= OPT4060_REG_CONFIG_VAL_OPERATING_MODE_CONTINUOUS;
 #endif
 
-	p_data->cfg_reg |=
-#if CONFIG_OPT4060_RANGE_AUTO
-		OPT4060_REG_CONFIG_VAL_RANGE_AUTO;
-#elif CONFIG_OPT4060_RANGE_2254_LUX
-		OPT4060_REG_CONFIG_VAL_RANGE_2_2_KLUX;
-#elif CONFIG_OPT4060_RANGE_4509_LUX
-		OPT4060_REG_CONFIG_VAL_RANGE_4_5_KLUX;
-#elif CONFIG_OPT4060_RANGE_9018_LUX
-		OPT4060_REG_CONFIG_VAL_RANGE_9_KLUX;
-#elif CONFIG_OPT4060_RANGE_18036_LUX
-		OPT4060_REG_CONFIG_VAL_RANGE_18_KLUX;
-#elif CONFIG_OPT4060_RANGE_36071_LUX
-		OPT4060_REG_CONFIG_VAL_RANGE_36_KLUX;
-#elif CONFIG_OPT4060_RANGE_72142_LUX
-		OPT4060_REG_CONFIG_VAL_RANGE_72_KLUX;
-#elif CONFIG_OPT4060_RANGE_144284_LUX
-		OPT4060_REG_CONFIG_VAL_RANGE_144_KLUX;
-#else
-#error "Unsupported range"
-#endif
+	p_data->cfg_reg |= OPT4060_REG_CONFIG_DEFAULT_RANGE;
 
-	p_data->cfg_reg |=
-#if CONFIG_OPT4060_CONV_TIME_600_US
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_600_US;
-#elif CONFIG_OPT4060_CONV_TIME_1_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_1_MS;
-#elif CONFIG_OPT4060_CONV_TIME_1_8_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_1_8_MS;
-#elif CONFIG_OPT4060_CONV_TIME_3_4_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_3_4_MS;
-#elif CONFIG_OPT4060_CONV_TIME_6_5_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_6_5_MS;
-#elif CONFIG_OPT4060_CONV_TIME_12_7_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_12_7_MS;
-#elif CONFIG_OPT4060_CONV_TIME_25_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_25_MS;
-#elif CONFIG_OPT4060_CONV_TIME_50_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_50_MS;
-#elif CONFIG_OPT4060_CONV_TIME_100_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_100_MS;
-#elif CONFIG_OPT4060_CONV_TIME_200_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_200_MS;
-#elif CONFIG_OPT4060_CONV_TIME_400_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_400_MS;
-#elif CONFIG_OPT4060_CONV_TIME_800_MS
-		OPT4060_REG_CONFIG_VAL_CONV_TIME_800_MS;
-#else
-#error "Unsupported conversion time"
-#endif
+	p_data->cfg_reg |= OPT4060_REG_CONFIG_DEFAULT_CONV_TIME;
 
-#ifdef CONFIG_OPT4060_INT
+#if defined(CONFIG_OPT4060_INT) && CONFIG_OPT4060_INT
 	uint16_t int_flags = OPT4060_REG_CONFIG2_VAL_INT_DIR_OUTPUT;
-#if CONFIG_OPT4060_INT_DATA_READY_FOR_ALL_CHANNELS
+#if defined(CONFIG_OPT4060_INT_DATA_READY_FOR_ALL_CHANNELS) &&                                     \
+	CONFIG_OPT4060_INT_DATA_READY_FOR_ALL_CHANNELS
 	int_flags |= OPT4060_REG_CONFIG2_VAL_INT_CFG_DATA_RDY_ALL_CHANNELS;
 #else
 	int_flags |= OPT4060_REG_CONFIG2_VAL_INT_CFG_DATA_RDY_NEXT_CHANNEL;
@@ -784,7 +803,7 @@ static int opt4060_init(const struct device *const p_dev)
 
 	LOG_DBG("REG_CONFIG: 0x%04x", p_data->cfg_reg);
 
-#if CONFIG_OPT4060_OP_MODE_ONESHOT
+#if defined(CONFIG_OPT4060_OP_MODE_ONESHOT) && CONFIG_OPT4060_OP_MODE_ONESHOT
 	p_data->flag_one_shot_started = false;
 #else
 	if (!opt4060_reg_write(p_dev, OPT4060_REG_CONFIG, p_data->cfg_reg)) {
@@ -792,7 +811,7 @@ static int opt4060_init(const struct device *const p_dev)
 		return -EIO;
 	}
 
-	int res = 0;
+	opt4060_ret_t res = 0;
 
 #if 0
 	res = i2c_configure(p_config->i2c.bus, I2C_SPEED_SET(I2C_SPEED_FAST));
@@ -821,9 +840,10 @@ static int opt4060_init(const struct device *const p_dev)
 	return 0;
 }
 
-int opt4060_configure_conv_time(const struct device *const p_dev, const uint16_t conv_time)
+opt4060_ret_t opt4060_configure_conv_time(const struct device *const p_dev,
+					  const uint16_t conv_time)
 {
-	struct opt4060_data *const p_data = p_dev->data;
+	opt4060_data_t *const p_data = p_dev->data;
 
 	p_data->cfg_reg &= ~OPT4060_REG_CONFIG_VAL_CONV_TIME_MASK;
 	p_data->cfg_reg |= conv_time;
@@ -835,18 +855,16 @@ int opt4060_configure_conv_time(const struct device *const p_dev, const uint16_t
 	return 0;
 }
 
-#if CONFIG_OPT4060_INT
+#if defined(CONFIG_OPT4060_INT) && CONFIG_OPT4060_INT
 #define OPT4060_CFG_INT(inst) .gpio_int = GPIO_DT_SPEC_INST_GET_BY_IDX(inst, irq_gpios, 0),
 #else
-#define OPT4060_CFG_INT(inst)
+#define OPT4060_CFG_INT(inst) /* NOSONAR */
 #endif
 
-#define OPT4060_DEFINE(inst)                                                                       \
-	static struct opt4060_data opt4060_data_##inst;                                            \
-                                                                                                   \
-	static const struct opt4060_config opt4060_config_##inst = {                               \
-		.i2c = I2C_DT_SPEC_INST_GET(inst), OPT4060_CFG_INT(inst)};                         \
-                                                                                                   \
+#define OPT4060_DEFINE(inst) /* NOSONAR */                                                         \
+	static opt4060_data_t opt4060_data_##inst;                                                 \
+	static const opt4060_config_t opt4060_config_##inst = {.i2c = I2C_DT_SPEC_INST_GET(inst),  \
+							       OPT4060_CFG_INT(inst)};             \
 	SENSOR_DEVICE_DT_INST_DEFINE(inst, opt4060_init, NULL, &opt4060_data_##inst,               \
 				     &opt4060_config_##inst, POST_KERNEL,                          \
 				     CONFIG_SENSOR_INIT_PRIORITY, &opt4060_driver_api);

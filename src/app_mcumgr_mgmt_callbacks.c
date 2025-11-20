@@ -60,13 +60,13 @@ conv_fs_mgmt_id_to_str(const uint16_t id)
 
 static enum mgmt_cb_return
 mgmt_cb_cmd_reset(
-    uint32_t            event,
-    enum mgmt_cb_return prev_status,
-    int32_t*            rc,
-    uint16_t*           group,
-    bool*               abort_more,
-    void*               data,
-    size_t              data_size)
+    uint32_t                     event,
+    __unused enum mgmt_cb_return prev_status,
+    __unused int32_t*            rc,
+    __unused uint16_t*           group,
+    __unused bool*               abort_more,
+    __unused void*               data,
+    __unused size_t              data_size)
 {
     if (MGMT_EVT_OP_OS_MGMT_RESET != event)
     {
@@ -83,13 +83,13 @@ mgmt_cb_cmd_reset(
 
 static enum mgmt_cb_return
 mgmt_cb_cmd_recv(
-    uint32_t            event,
-    enum mgmt_cb_return prev_status,
-    int32_t*            rc,
-    uint16_t*           group,
-    bool*               abort_more,
-    void*               data,
-    size_t              data_size)
+    uint32_t                     event,
+    __unused enum mgmt_cb_return prev_status,
+    __unused int32_t*            rc,
+    __unused uint16_t*           group,
+    __unused bool*               abort_more,
+    void*                        data,
+    size_t                       data_size)
 {
     if (MGMT_EVT_OP_CMD_RECV != event)
     {
@@ -104,7 +104,7 @@ mgmt_cb_cmd_recv(
     const struct mgmt_evt_op_cmd_arg* const p_cmd_recv = (struct mgmt_evt_op_cmd_arg*)data;
     if (MGMT_GROUP_ID_FS == p_cmd_recv->group)
     {
-        g_upload_cnt++;
+        g_upload_cnt += 1;
         LOG_INF(
             "MGMT_EVT_OP_CMD_RECV: MGMT_GROUP_ID_FS: group 0x%04x, id=0x%04x (%s), opcode 0x%04x (%s)",
             p_cmd_recv->group,
@@ -130,13 +130,13 @@ check_is_file_path_equal_to_name(const char* const p_file_path, const char* cons
 
 static enum mgmt_cb_return
 mgmt_cb_file_access(
-    uint32_t            event,
-    enum mgmt_cb_return prev_status,
-    int32_t*            rc,
-    uint16_t*           group,
-    bool*               abort_more,
-    void*               data,
-    size_t              data_size)
+    uint32_t                     event,
+    __unused enum mgmt_cb_return prev_status,
+    int32_t*                     rc,
+    uint16_t*                    group,
+    __unused bool*               abort_more,
+    void*                        data,
+    size_t                       data_size)
 {
     if (MGMT_EVT_OP_FS_MGMT_FILE_ACCESS != event)
     {

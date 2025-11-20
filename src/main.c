@@ -38,8 +38,17 @@
 #include "app_button.h"
 #include "app_fw_ver.h"
 #include "ruuvi_fw_update.h"
+#include "zephyr_api.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+
+#if !defined(RUUVI_MOCK_MEASUREMENTS)
+#define RUUVI_MOCK_MEASUREMENTS (0)
+#endif
+
+#if !defined(CONFIG_DEBUG)
+#define CONFIG_DEBUG (0)
+#endif
 
 #define BOOT_MODE_TYPE_FACTORY_RESET (0xAC)
 
@@ -47,7 +56,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 #define APP_PERIOD_POLL_SENSORS_MS       (1000U)
 #define APP_PERIOD_MEASURE_LUMINOSITY_MS (1000U / CONFIG_RUUVI_AIR_OPT4060_NUM_MEASUREMENTS_PER_SECOND)
 
-typedef enum app_event_type
+typedef enum app_event_type_e
 {
     APP_EVENT_TYPE_NONE               = 0,
     APP_EVENT_TYPE_POLL_SENSORS       = 1 << 0,
@@ -83,7 +92,7 @@ static bool    g_flag_rtc_valid_on_boot;
 static bool
 mount_fs(void)
 {
-    int rc = fs_mkfs(FS_LITTLEFS, FIXED_PARTITION_ID(littlefs_storage1), NULL, 0);
+    zephyr_api_ret_t rc = fs_mkfs(FS_LITTLEFS, FIXED_PARTITION_ID(littlefs_storage1), NULL, 0);
     if (0 != rc)
     {
         LOG_ERR("FAIL: mkfs fa_id %d: res=%d", FIXED_PARTITION_ID(littlefs_storage1), rc);
@@ -121,14 +130,14 @@ mount_fs(void)
 }
 
 static void
-on_timer_poll_sensors(struct k_timer* timer_id)
+on_timer_poll_sensors(__unused struct k_timer* timer_id)
 {
     TLOG_DBG("on_timer_poll_sensors");
     k_event_post(&main_event, APP_EVENT_TYPE_POLL_SENSORS);
 }
 
 static void
-on_timer_measure_luminosity(struct k_timer* timer_id)
+on_timer_measure_luminosity(__unused struct k_timer* timer_id)
 {
     TLOG_DBG("on_timer_measure_luminosity");
     k_event_post(&main_event, APP_EVENT_TYPE_MEASURE_LUMINOSITY);
@@ -271,11 +280,10 @@ poll_sensors(void)
 
     app_led_green_set_if_button_is_not_pressed(true);
 
-    const sensors_poll_result_t poll_res = sensors_poll(cur_unix_time);
+    const sensors_poll_result_e poll_res = sensors_poll(cur_unix_time);
 
     app_led_green_set_if_button_is_not_pressed(false);
 
-#if 1
     switch (poll_res)
     {
         case SENSORS_POLL_RESULT_OK:
@@ -348,7 +356,6 @@ poll_sensors(void)
     {
         sensors_reinit();
     }
-#endif
 }
 
 static void
@@ -405,7 +412,13 @@ log_clocks(void)
     uint32_t lfclksrc = NRF_CLOCK->LFCLKSRC;
     uint32_t hfstat   = NRF_CLOCK->HFCLKSTAT;
 
-    /* LFCLK source: bits [1:0]: 0=RC, 1=XTAL, 2=Synth, 3=External (nRF52) */
+    /*
+     * LFCLK source (bits [1:0]):
+     *  • 0 : RC
+     *  • 1 : XTAL
+     *  • 2 : Synth
+     *  • 3 : External (nRF52)
+     */
     uint32_t lf_src      = lfstat & CLOCK_LFCLKSTAT_SRC_Msk;
     bool     lf_running  = lfstat & CLOCK_LFCLKSTAT_STATE_Msk;
     bool     lf_bypass   = (lfclksrc & CLOCK_LFCLKSRC_BYPASS_Msk) != 0;
@@ -432,7 +445,7 @@ main(void)
     log_reset_cause();
     log_clocks();
 
-    if (bootmode_check(BOOT_MODE_TYPE_FACTORY_RESET))
+    if (0 != bootmode_check(BOOT_MODE_TYPE_FACTORY_RESET))
     {
         LOG_WRN("Factory reset was performed.");
         bootmode_clear();
@@ -533,7 +546,7 @@ app_fs_is_file_exist(const char* const p_abs_path)
 {
     bool                    res = true;
     static struct fs_dirent g_fs_dir_entry;
-    const int               rc = fs_stat(p_abs_path, &g_fs_dir_entry);
+    const zephyr_api_ret_t  rc = fs_stat(p_abs_path, &g_fs_dir_entry);
     if (-ENOENT == rc)
     {
         res = false;
@@ -546,6 +559,10 @@ app_fs_is_file_exist(const char* const p_abs_path)
     {
         res = false;
     }
+    else
+    {
+        // MISRA: "if ... else if" constructs should end with "else" clauses
+    }
     return res;
 }
 
@@ -553,7 +570,7 @@ app_fs_is_file_exist(const char* const p_abs_path)
  * Declare the symbol pointing to the former implementation of sys_reboot function
  */
 extern void
-__real_sys_reboot(int type);
+__real_sys_reboot(int type); // NOSONAR
 
 /**
  * Redefine sys_reboot function to print a message before actually restarting
@@ -596,7 +613,7 @@ __wrap_sys_reboot(int type) // NOSONAR
             }
         }
         TLOG_WRN("Rebooting...");
-        k_msleep(25); // Give some time to print log message
+        k_msleep(25); // NOSONAR: Give some time to print log message
 
 #if CONFIG_DEBUG || !IS_ENABLED(CONFIG_WATCHDOG)
         /* Call the former implementation to actually restart the board */
@@ -611,7 +628,7 @@ __wrap_sys_reboot(int type) // NOSONAR
         k_event_post(&main_event, APP_EVENT_TYPE_REBOOT);
         while (1)
         {
-            k_msleep(1000);
+            k_msleep(MSEC_PER_SEC);
         }
     }
 }

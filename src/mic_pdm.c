@@ -12,7 +12,7 @@
 #include <assert.h>
 #include <zephyr/kernel.h>
 #include <zephyr/audio/dmic.h>
-#include "arm_math.h"
+#include <zephyr/dsp/types.h>
 #include "dsp_rms.h"
 #include "tlog.h"
 #include "dsp_rms.h"
@@ -110,21 +110,21 @@ mic_pdm_thread(void* p1, void* p2, void* p3)
         .mem_slab  = &g_mem_slab,
     };
     struct dmic_cfg cfg = {
-		.io = {
-			/* These fields can be used to limit the PDM clock
-			 * configurations that the driver is allowed to use
-			 * to those supported by the microphone.
-			 */
-			.min_pdm_clk_freq = MIC_MIN_PDM_CLK_FREQ,
-			.max_pdm_clk_freq = MIC_MAX_PDM_CLK_FREQ,
-			.min_pdm_clk_dc   = 40,
-			.max_pdm_clk_dc   = 60,
-		},
-		.streams = &stream,
-		.channel = {
-			.req_num_streams = 1,
-		},
-	};
+        .io = {
+            /* These fields can be used to limit the PDM clock
+             * configurations that the driver is allowed to use
+             * to those supported by the microphone.
+             */
+            .min_pdm_clk_freq = MIC_MIN_PDM_CLK_FREQ,
+            .max_pdm_clk_freq = MIC_MAX_PDM_CLK_FREQ,
+            .min_pdm_clk_dc   = 40,
+            .max_pdm_clk_dc   = 60,
+        },
+        .streams = &stream,
+        .channel = {
+            .req_num_streams = 1,
+        },
+    };
 
     cfg.channel.req_num_chan    = 1;
     cfg.channel.req_chan_map_lo = dmic_build_channel_map(0, 0, PDM_CHAN_LEFT);

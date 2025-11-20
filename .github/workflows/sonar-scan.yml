@@ -220,6 +220,10 @@ jobs:
           mv "$GITHUB_WORKSPACE/${PROJECT_DIR}" "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}"
 
           docker run --rm \
+            --network none \
+            --cap-drop NET_ADMIN \
+            --cap-drop NET_RAW \
+            --cap-drop NET_BIND_SERVICE \
             --user "$(id -u)":"$(id -g)" \
             -e HOME=$HOME \
             -e USER="$(id -un)" \
@@ -227,7 +231,6 @@ jobs:
             -e HOST_GID="$(id -g)" \
             -e HOST_USER="$(id -un)" \
             -e HOST_GROUP="$(id -gn)" \
-            -e SONAR_TOKEN="${SONAR_TOKEN:-}" \
             -v "$HOME:$HOME" \
             -v "$RUNNER_TEMP/signing_keys:$HOME/.signing_keys:ro" \
             -v "$HOME/bin/build-wrapper-linux-x86:$HOME/bin/build-wrapper-linux-x86" \
@@ -279,7 +282,6 @@ jobs:
               gcovr \
                 --object-directory twister-out \
                 --sonarqube \
-                --verbose \
                 --output coverage.xml \
                 --exclude 'tests/.*' \
                 --exclude 'components/.*'
@@ -292,33 +294,82 @@ jobs:
               find . -type f -name "*.gcov" -exec rm -f {} \;
               find . -type f -name 'gtestresults.xml' -exec rm -f {} \;
               rm -rf twister-out
-
-              if [ ! -z "$SONAR_TOKEN" ]; then
-                sonar-scanner --debug \
-                  --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
-                  --define sonar.coverageReportPaths=coverage.xml
-              fi
             '
 
-      # - name: SonarQube Scan
-      #   uses: SonarSource/sonarqube-scan-action@v6
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #   with:
-      #     projectBaseDir: ../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
-      #     args: >
-      #       --debug
-      #       --define sonar.cfamily.compile-commands=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/build-sonar/bw-output/compile_commands.json
-      #       --define sonar.coverageReportPaths=../../../ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/coverage.xml
+      - name: SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          set -xeuo pipefail
+          export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
+          which sonar-scanner
+          echo "Starting sonar-scanner in parallel"
 
-      # - name: SonarQube Scan
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #   run: |
-      #     set -xeuo pipefail
-      #     cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
-      #     export PATH="$HOME/bin/sonar-scanner/bin:$PATH"
-      #     which sonar-scanner
-      #     sonar-scanner --debug \
-      #       --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
-      #       --define sonar.coverageReportPaths=coverage.xml
+          (
+            echo "[========== START SonarQube Scan: ruuvi.air.main ]"
+            cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}
+            sonar-scanner --debug \
+              --define sonar.cfamily.compile-commands=build-sonar/bw-output/compile_commands.json \
+              --define sonar.coverageReportPaths=coverage.xml
+            echo "[========== END SonarQube Scan: ruuvi.air.main]"
+          ) >/tmp/sonar-scan-ruuvi.air.main.log 2>&1 &
+          PID_A=$!
+
+          (
+            echo "[========== START SonarQube Scan: ruuvi.air.b0 ]"
+            unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
+            cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
+            sonar-scanner --debug \
+              --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+          ) >/tmp/sonar-scan-ruuvi.air.b0.log 2>&1 &
+          PID_B=$!
+
+          (
+            echo "[========== START SonarQube Scan: ruuvi.air.mcuboot ]"
+            unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
+            cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
+            sonar-scanner --debug \
+              --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+          ) >/tmp/sonar-scan-ruuvi.air.mcuboot.log 2>&1 &
+          PID_C=$!
+
+          (
+            echo "[========== START SonarQube Scan: ruuvi.air.fw_loader ]"
+            unset GITHUB_EVENT_NAME GITHUB_HEAD_REF GITHUB_BASE_REF
+            cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
+            sonar-scanner --debug \
+              --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+          ) >/tmp/sonar-scan-ruuvi.air.fw_loader.log 2>&1 &
+          PID_D=$!
+
+          # Wait for all tasks but DO NOT stop the script if any fails
+          FAIL=0
+
+          wait $PID_A || FAIL=1
+          wait $PID_B || FAIL=1
+          wait $PID_C || FAIL=1
+          wait $PID_D || FAIL=1
+
+          echo "========================================"
+          echo "LOG: SonarQube Scan: ruuvi.air.main"
+          echo "========================================"
+          cat /tmp/sonar-scan-ruuvi.air.main.log
+          echo "========================================"
+          echo "LOG: SonarQube Scan: ruuvi.air.b0"
+          echo "========================================"
+          cat /tmp/sonar-scan-ruuvi.air.b0.log
+          echo "========================================"
+          echo "LOG: SonarQube Scan: ruuvi.air.mcuboot"
+          echo "========================================"
+          cat /tmp/sonar-scan-ruuvi.air.mcuboot.log
+          echo "========================================"
+          echo "LOG: SonarQube Scan: ruuvi.air.fw_loader"
+          echo "========================================"
+          cat /tmp/sonar-scan-ruuvi.air.fw_loader.log
+
+          # Fail the step if any task failed
+          if [ "$FAIL" -ne 0 ]; then
+            echo "❌ One or more tasks failed"
+            exit 1
+          fi
+          echo "✅ All tasks completed successfully"

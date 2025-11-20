@@ -9,6 +9,7 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
 #include "app_button.h"
+#include "zephyr_api.h"
 
 LOG_MODULE_REGISTER(LED, LOG_LEVEL_WRN);
 
@@ -83,7 +84,7 @@ app_led_init_gpio(const struct gpio_dt_spec* p_led_spec)
         return;
     }
 
-    const int rc = gpio_pin_configure_dt(p_led_spec, GPIO_OUTPUT_INACTIVE);
+    const int32_t rc = gpio_pin_configure_dt(p_led_spec, GPIO_OUTPUT_INACTIVE);
     if (0 != rc)
     {
         LOG_ERR("Failed to configure LED %s:%d, rc %d", p_led_spec->port->name, p_led_spec->pin, rc);
@@ -115,7 +116,7 @@ app_led_init_pwm_gpio(
         p_led_spec->pin,
         p_pwm_led_spec->dev->name,
         p_pwm_led_spec->channel);
-    const int rc = pwm_set_dt(p_pwm_led_spec, 0, 0);
+    const zephyr_api_ret_t rc = pwm_set_dt(p_pwm_led_spec, 0, 0);
     if (0 != rc)
     {
         LOG_ERR(
@@ -148,7 +149,7 @@ app_led_deinit_gpio(const struct gpio_dt_spec* p_led_spec)
 {
     gpio_pin_set_dt(p_led_spec, 0);
 
-    const int rc = gpio_pin_configure_dt(p_led_spec, GPIO_DISCONNECTED);
+    const int32_t rc = gpio_pin_configure_dt(p_led_spec, GPIO_DISCONNECTED);
     if (0 != rc)
     {
         LOG_ERR("Failed to configure LED %s:%d, rc %d", p_led_spec->port->name, p_led_spec->pin, rc);
@@ -191,7 +192,7 @@ app_led_red_set(const bool is_on)
 #if (IS_ENABLED(CONFIG_RUUVI_AIR_PINHOLE_LED_PWM))
     if (g_app_led_in_pwm_mode)
     {
-        const int res = pwm_set_dt(
+        const zephyr_api_ret_t res = pwm_set_dt(
             &pwm_led_red,
             CONFIG_RUUVI_AIR_PINHOLE_LED_PWM_PERIOD_NS,
             is_on ? CONFIG_RUUVI_AIR_PINHOLE_LED_PWM_PULSE_WIDTH_NS : 0);
@@ -204,7 +205,7 @@ app_led_red_set(const bool is_on)
     else
     {
 #endif // (IS_ENABLED(CONFIG_RUUVI_AIR_PINHOLE_LED_PWM))
-        const int res = gpio_pin_set_dt(&led_red, is_on ? 1 : 0);
+        const zephyr_api_ret_t res = gpio_pin_set_dt(&led_red, is_on ? 1 : 0);
         if (0 != res)
         {
             LOG_ERR("gpio_pin_set_dt failed");
@@ -224,7 +225,7 @@ app_led_green_set(const bool is_on)
 #if (IS_ENABLED(CONFIG_RUUVI_AIR_PINHOLE_LED_PWM))
     if (g_app_led_in_pwm_mode)
     {
-        const int res = pwm_set_dt(
+        const zephyr_api_ret_t res = pwm_set_dt(
             &pwm_led_green,
             CONFIG_RUUVI_AIR_PINHOLE_LED_PWM_PERIOD_NS,
             is_on ? CONFIG_RUUVI_AIR_PINHOLE_LED_PWM_PULSE_WIDTH_NS : 0);
@@ -237,7 +238,7 @@ app_led_green_set(const bool is_on)
     else
     {
 #endif // (IS_ENABLED(CONFIG_RUUVI_AIR_PINHOLE_LED_PWM))
-        const int res = gpio_pin_set_dt(&led_green, is_on ? 1 : 0);
+        const zephyr_api_ret_t res = gpio_pin_set_dt(&led_green, is_on ? 1 : 0);
         if (0 != res)
         {
             LOG_ERR("gpio_pin_set_dt failed");

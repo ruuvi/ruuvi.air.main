@@ -11,6 +11,8 @@
 #include "ruuvi_endpoints.h"
 #include "hist_log.h"
 #include "nus_req.h"
+#include "sys_utils.h"
+#include "zephyr_api.h"
 
 LOG_MODULE_REGISTER(nus, LOG_LEVEL_INF);
 
@@ -75,16 +77,16 @@ nus_is_notif_enabled(void)
 static void
 nus_hist_log_pack_uint32(uint8_t* const p_buf, const uint32_t val)
 {
-    p_buf[0] = (uint8_t)((val >> 24U) & 0xFFU);
-    p_buf[1] = (uint8_t)((val >> 16U) & 0xFFU);
-    p_buf[2] = (uint8_t)((val >> 8U) & 0xFFU);
-    p_buf[3] = (uint8_t)(val & 0xFFU);
+    p_buf[BYTE_IDX_0] = (uint8_t)((val >> BYTE_SHIFT_3) & BYTE_MASK);
+    p_buf[BYTE_IDX_1] = (uint8_t)((val >> BYTE_SHIFT_2) & BYTE_MASK);
+    p_buf[BYTE_IDX_2] = (uint8_t)((val >> BYTE_SHIFT_1) & BYTE_MASK);
+    p_buf[BYTE_IDX_3] = (uint8_t)((val >> BYTE_SHIFT_0) & BYTE_MASK);
 }
 
 static void
 nus_hist_log_pack_buffer(uint8_t* const p_buf, const uint8_t* const p_data, const size_t len)
 {
-    if (NULL == p_buf || NULL == p_data || 0 == len)
+    if ((NULL == p_buf) || (NULL == p_data) || (0 == len))
     {
         return;
     }
@@ -112,23 +114,22 @@ nus_send_with_retries(nus_hist_log_user_data_t* const p_data)
     LOG_HEXDUMP_DBG(p_data->msg, p_data->msg_offset, "bt_nus_send");
     while (1)
     {
-        // TLOG_INF("bt_nus_send: %u bytes", p_data->msg_offset);
-        int64_t   time_start = k_uptime_get();
-        const int err        = bt_nus_send(p_data->p_conn, p_data->msg, p_data->msg_offset);
-        int64_t   delta_ms   = k_uptime_get() - time_start;
+        int64_t                time_start = k_uptime_get();
+        const zephyr_api_ret_t err        = bt_nus_send(p_data->p_conn, p_data->msg, p_data->msg_offset);
+        int64_t                delta_ms   = k_uptime_get() - time_start;
         if (0 != err)
         {
             TLOG_INF("bt_nus_send: err %d, delta %u ms", err, (uint32_t)delta_ms);
             if (-EAGAIN == err)
             {
                 TLOG_WRN("Failed to send packet to NUS, err %d (EAGAIN)", err);
-                k_msleep(10);
+                k_msleep(10); // NOSONAR: avoid busy loop
                 continue;
             }
             if (-ENOMEM == err)
             {
                 TLOG_ERR("Failed to send packet to NUS, err %d (ENOMEM)", err);
-                k_msleep(10);
+                k_msleep(10); // NOSONAR: avoid busy loop
                 continue;
             }
             TLOG_ERR("Failed to send packet to NUS, err %d", err);
@@ -157,7 +158,7 @@ nus_hist_log_record_handler(
 
     if (0 == p_data->msg_offset)
     {
-        memset(&p_data->msg[0], 0xff, sizeof(p_data->msg));
+        memset(&p_data->msg[0], UINT8_MAX, sizeof(p_data->msg));
 
         p_data->msg[RE_STANDARD_DESTINATION_INDEX]      = p_data->src_idx;
         p_data->msg[RE_STANDARD_SOURCE_INDEX]           = RE_STANDARD_DESTINATION_AIRQ;
@@ -194,11 +195,12 @@ nus_hist_log_record_handler(
 }
 
 static bool
-app_sensor_send_eof(struct bt_conn* const p_conn, nus_hist_log_user_data_t* const p_data)
+app_sensor_send_eof(__unused struct bt_conn* const p_conn, nus_hist_log_user_data_t* const p_data)
 {
     if (0 != p_data->msg_offset)
     {
-        if (!nus_send_with_retries(p_data))
+        const bool res = nus_send_with_retries(p_data); // Send remaining data
+        if (!res)
         {
             return false;
         }
@@ -206,7 +208,7 @@ app_sensor_send_eof(struct bt_conn* const p_conn, nus_hist_log_user_data_t* cons
 
     const uint32_t record_led = RE_LOG_WRITE_AIRQ_RECORD_LEN;
 
-    memset(&p_data->msg[0], 0xff, sizeof(p_data->msg));
+    memset(&p_data->msg[0], UINT8_MAX, sizeof(p_data->msg));
 
     p_data->msg[RE_STANDARD_DESTINATION_INDEX]      = p_data->src_idx;
     p_data->msg[RE_STANDARD_SOURCE_INDEX]           = RE_STANDARD_DESTINATION_AIRQ;
@@ -277,8 +279,6 @@ app_sensor_log_read(struct bt_conn* const p_conn, const nus_req_t* const p_req)
         user_data.packets_cnt,
         (uint32_t)(delta_ms / 1000),
         (uint32_t)(delta_ms % 1000));
-
-    k_msleep(500);
 
     g_nus_reading_hist_in_progress = false;
 
@@ -375,7 +375,7 @@ bool
 nus_init(void)
 {
     g_nus_cnt_notif_enabled = 0;
-    int err                 = bt_nus_cb_register(&g_nus_listener, NULL);
+    zephyr_api_ret_t err    = bt_nus_cb_register(&g_nus_listener, NULL);
     if (0 != err)
     {
         TLOG_ERR("Failed to register NUS callback: %d", err);
@@ -386,7 +386,7 @@ nus_init(void)
 }
 
 static void
-nus_thread(void* p1, void* p2, void* p3)
+nus_thread(__unused void* p1, __unused void* p2, __unused void* p3)
 {
     while (1)
     {

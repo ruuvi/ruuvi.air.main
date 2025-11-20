@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/logging/log.h>
+#include "sys_utils.h"
 #include "app_settings.h"
 #include "rgb_led.h"
 #include "opt_rgb_ctrl.h"
@@ -21,13 +22,13 @@ static void
 log_args(size_t argc, char** argv)
 {
     LOG_DBG("%s: argc=%zu", __func__, argc);
-    for (size_t i = 0; i < argc; i++)
+    for (size_t i = 0; i < argc; ++i)
     {
         LOG_DBG("%s: argv[%zu]=%s", __func__, i, argv[i]);
     }
 }
 
-static int
+static int // NOSONAR: Zephyr shell command handler API
 cmd_ruuvi_echo(const struct shell* sh, size_t argc, char** argv)
 {
     log_args(argc, argv);
@@ -40,7 +41,7 @@ cmd_ruuvi_echo(const struct shell* sh, size_t argc, char** argv)
     return 0;
 }
 
-static int
+static int // NOSONAR: Zephyr shell command handler API
 cmd_ruuvi_led_brightness(const struct shell* sh, size_t argc, char** argv)
 {
     log_args(argc, argv);
@@ -81,9 +82,13 @@ cmd_ruuvi_led_brightness(const struct shell* sh, size_t argc, char** argv)
 static bool
 parse_uint8(const char* const p_str, uint8_t* const p_value)
 {
-    char*      p_end = NULL;
-    const long val   = strtol(p_str, &p_end, 10);
-    if ((NULL == p_end) || (p_end == p_str) || ('\0' != *p_end) || (val < 0) || (val > 255))
+    char*         p_end = NULL;
+    const int32_t val   = strtol(p_str, &p_end, BASE_10);
+    if ((NULL == p_end) || (p_end == p_str) || ('\0' != *p_end))
+    {
+        return false;
+    }
+    if ((val < 0) || (val > UINT8_MAX))
     {
         return false;
     }
@@ -102,26 +107,27 @@ parse_uint8_print_err(const struct shell* sh, const char* const p_str, uint8_t* 
     return true;
 }
 
-static int
+static int // NOSONAR: Zephyr shell command handler API
 cmd_ruuvi_led_write_channels(const struct shell* sh, size_t argc, char** argv)
 {
     log_args(argc, argv);
-    uint8_t currents[3] = { 0 };
-    uint8_t pwms[3]     = { 0 };
+    uint8_t currents[RGB_LED_COLOR_CHANNELS_NUM] = { 0 };
+    uint8_t pwms[RGB_LED_COLOR_CHANNELS_NUM]     = { 0 };
 
-    for (int i = 0; i < 3; ++i)
+    int32_t argv_idx = 1;
+    for (int32_t i = 0; i < RGB_LED_COLOR_CHANNELS_NUM; ++i, ++argv_idx)
     {
-        if (!parse_uint8(argv[1 + i], &currents[i]))
+        if (!parse_uint8(argv[argv_idx], &currents[i]))
         {
-            shell_error(sh, "Invalid current value: %s", argv[1 + i]);
+            shell_error(sh, "Invalid current value: %s", argv[argv_idx]);
             return -EINVAL;
         }
     }
-    for (int i = 0; i < 3; ++i)
+    for (int32_t i = 0; i < RGB_LED_COLOR_CHANNELS_NUM; ++i, ++argv_idx)
     {
-        if (!parse_uint8(argv[4 + i], &pwms[i]))
+        if (!parse_uint8(argv[argv_idx], &pwms[i]))
         {
-            shell_error(sh, "Invalid PWM value: %s", argv[4 + i]);
+            shell_error(sh, "Invalid PWM value: %s", argv[argv_idx]);
             return -EINVAL;
         }
     }
@@ -210,10 +216,14 @@ get_brightness_level_from_str(const char* const p_brightness)
     {
         brightness_level = MANUAL_BRIGHTNESS_LEVEL_BRIGHT_DAY;
     }
+    else
+    {
+        // MISRA: "if ... else if" constructs should end with "else" clauses
+    }
     return brightness_level;
 }
 
-static int
+static int // NOSONAR: Zephyr shell command handler API
 cmd_ruuvi_led_get_color_table(const struct shell* sh, size_t argc, char** argv)
 {
     log_args(argc, argv);
@@ -232,26 +242,29 @@ cmd_ruuvi_led_get_color_table(const struct shell* sh, size_t argc, char** argv)
 }
 
 static bool
-parse_rgb_values(const struct shell* sh, char** argv, int* const p_arg_idx, rgb_led_color_t* const p_colors)
+parse_rgb_values(const struct shell* sh, char** argv, int32_t* const p_arg_idx, rgb_led_color_t* const p_colors)
 {
-    int arg_idx = *p_arg_idx;
-    if (!parse_uint8_print_err(sh, argv[arg_idx++], &p_colors->red))
+    int32_t arg_idx = *p_arg_idx;
+    if (!parse_uint8_print_err(sh, argv[arg_idx], &p_colors->red))
     {
         return false;
     }
-    if (!parse_uint8_print_err(sh, argv[arg_idx++], &p_colors->green))
+    arg_idx += 1;
+    if (!parse_uint8_print_err(sh, argv[arg_idx], &p_colors->green))
     {
         return false;
     }
-    if (!parse_uint8_print_err(sh, argv[arg_idx++], &p_colors->blue))
+    arg_idx += 1;
+    if (!parse_uint8_print_err(sh, argv[arg_idx], &p_colors->blue))
     {
         return false;
     }
+    arg_idx += 1;
     *p_arg_idx = arg_idx;
     return true;
 }
 
-static int
+static int // NOSONAR: Zephyr shell command handler API
 cmd_ruuvi_led_set_color_table(const struct shell* sh, size_t argc, char** argv)
 {
     log_args(argc, argv);
@@ -269,22 +282,25 @@ cmd_ruuvi_led_set_color_table(const struct shell* sh, size_t argc, char** argv)
         .currents = { 0 },
         .colors   = { { 0 } },
     };
-    int arg_idx = 2;
-    if (!parse_uint8_print_err(sh, argv[arg_idx++], &table.currents.current_red))
+    int32_t arg_idx = 2;
+    if (!parse_uint8_print_err(sh, argv[arg_idx], &table.currents.current_red))
     {
         return -EINVAL;
     }
-    if (!parse_uint8_print_err(sh, argv[arg_idx++], &table.currents.current_green))
+    arg_idx += 1;
+    if (!parse_uint8_print_err(sh, argv[arg_idx], &table.currents.current_green))
     {
         return -EINVAL;
     }
-    if (!parse_uint8_print_err(sh, argv[arg_idx++], &table.currents.current_blue))
+    arg_idx += 1;
+    if (!parse_uint8_print_err(sh, argv[arg_idx], &table.currents.current_blue))
     {
         return -EINVAL;
     }
-    for (air_quality_index_e quality_idx = AIR_QUALITY_INDEX_EXCELLENT; quality_idx <= AIR_QUALITY_INDEX_VERY_POOR;
-         ++quality_idx)
+    arg_idx += 1;
+    for (int32_t q_idx = AIR_QUALITY_INDEX_EXCELLENT; q_idx <= AIR_QUALITY_INDEX_VERY_POOR; ++q_idx)
     {
+        const air_quality_index_e quality_idx = q_idx;
         if (!parse_rgb_values(sh, argv, &arg_idx, &table.colors[quality_idx]))
         {
             return -EINVAL;
@@ -297,7 +313,7 @@ cmd_ruuvi_led_set_color_table(const struct shell* sh, size_t argc, char** argv)
     return 0;
 }
 
-static int
+static int // NOSONAR: Zephyr shell command handler API
 cmd_ruuvi_led_reset_color_table(const struct shell* sh, size_t argc, char** argv)
 {
     log_args(argc, argv);
@@ -318,7 +334,7 @@ cmd_ruuvi_led_reset_color_table(const struct shell* sh, size_t argc, char** argv
 }
 
 #if defined(CONFIG_BOOTLOADER_MCUBOOT)
-static int
+static int // NOSONAR: Zephyr shell command handler API
 cmd_ruuvi_version_info(const struct shell* sh, size_t argc, char** argv)
 {
     log_args(argc, argv);
@@ -393,7 +409,7 @@ cmd_ruuvi_version_info(const struct shell* sh, size_t argc, char** argv)
 #endif // CONFIG_BOOTLOADER_MCUBOOT
 
 /* Add command to the set of 'ruuvi' subcommands, see `SHELL_SUBCMD_ADD` */
-#define RUUVI_CMD_ARG_ADD(_syntax, _subcmd, _help, _handler, _mand, _opt) \
+#define RUUVI_CMD_ARG_ADD(_syntax, _subcmd, _help, _handler, _mand, _opt) /* NOSONAR */ \
     SHELL_SUBCMD_ADD((ruuvi), _syntax, _subcmd, _help, _handler, _mand, _opt);
 
 RUUVI_CMD_ARG_ADD(echo, NULL, "message", cmd_ruuvi_echo, 2, 0);

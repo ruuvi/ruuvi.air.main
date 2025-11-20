@@ -8,9 +8,9 @@ dsp_sum_of_square_q15(const q15_t* p_src, const uint32_t block_size)
     uint32_t block_cnt = block_size;
     while (block_cnt > 0U)
     {
-        const q15_t val = *p_src++;
+        const q15_t val = *p_src++; // NOSONAR
         sum += ((q31_t)val * val);
-        block_cnt--;
+        block_cnt -= 1;
     }
     return sum;
 }
@@ -22,9 +22,9 @@ dsp_sum_of_square_f32(const float32_t* p_src, const uint32_t block_size)
     uint32_t  block_cnt = block_size;
     while (block_cnt > 0U)
     {
-        const float32_t val = *p_src++;
+        const float32_t val = *p_src++; // NOSONAR
         sum += val * val;
-        block_cnt--;
+        block_cnt -= 1;
     }
     return sum;
 }
@@ -43,8 +43,8 @@ dsp_calc_sum_q15_q31(const q15_t* p_src, const uint16_t block_size)
     uint16_t block_cnt = block_size;
     while (block_cnt > 0U)
     {
-        sum += *p_src++;
-        block_cnt--;
+        sum += *p_src++; // NOSONAR
+        block_cnt -= 1;
     }
     return sum;
 }

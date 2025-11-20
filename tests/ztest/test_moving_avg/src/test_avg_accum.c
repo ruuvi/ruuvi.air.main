@@ -60,7 +60,7 @@ test_teardown(void* f)
 ZTEST_F(test_suite_avg_accum, test_accum_i16)
 {
     const int16_t invalid_value = -0x8000;
-    avg_accum_t   accum         = AVG_ACCUM_INIT_I16(invalid_value);
+    avg_accum_t   accum         = avg_accum_init_i16(invalid_value);
     ZASSERT_EQ_INT(invalid_value, avg_accum_calc_avg_i16(&accum));
     ZASSERT_EQ_INT(0, accum.cnt);
 
@@ -84,7 +84,7 @@ ZTEST_F(test_suite_avg_accum, test_accum_i16)
 ZTEST_F(test_suite_avg_accum, test_accum_u16_invalid_max)
 {
     const uint16_t invalid_value = UINT16_MAX;
-    avg_accum_t    accum         = AVG_ACCUM_INIT_U16(invalid_value);
+    avg_accum_t    accum         = avg_accum_init_u16(invalid_value);
     ZASSERT_EQ_INT(invalid_value, avg_accum_calc_avg_u16(&accum));
     ZASSERT_EQ_INT(0, accum.cnt);
 
@@ -107,7 +107,7 @@ ZTEST_F(test_suite_avg_accum, test_accum_u16_invalid_max)
 
 ZTEST_F(test_suite_avg_accum, test_accum_f32_invalid_max)
 {
-    avg_accum_t accum = AVG_ACCUM_INIT_F32();
+    avg_accum_t accum = avg_accum_init_f32();
     zassert_true(isnan(avg_accum_calc_avg_f32(&accum)));
     ZASSERT_EQ_INT(0, accum.cnt);
 

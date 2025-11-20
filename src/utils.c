@@ -2,6 +2,8 @@
 #include <time.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/addr.h>
+#include <zephyr/sys/timeutil.h>
+#include "sys_utils.h"
 #include "tlog.h"
 
 LOG_MODULE_REGISTER(utils, LOG_LEVEL_INF);
@@ -9,15 +11,17 @@ LOG_MODULE_REGISTER(utils, LOG_LEVEL_INF);
 uint64_t
 get_device_id(void)
 {
-    uint64_t id = 0;
-    id |= (uint64_t)((NRF_FICR->DEVICEID[0] >> 24) & 0xFF) << 56;
-    id |= (uint64_t)((NRF_FICR->DEVICEID[0] >> 16) & 0xFF) << 48;
-    id |= (uint64_t)((NRF_FICR->DEVICEID[0] >> 8) & 0xFF) << 40;
-    id |= (uint64_t)((NRF_FICR->DEVICEID[0] >> 0) & 0xFF) << 32;
-    id |= (uint64_t)((NRF_FICR->DEVICEID[1] >> 24) & 0xFF) << 24;
-    id |= (uint64_t)((NRF_FICR->DEVICEID[1] >> 16) & 0xFF) << 16;
-    id |= (uint64_t)((NRF_FICR->DEVICEID[1] >> 8) & 0xFF) << 8;
-    id |= (uint64_t)((NRF_FICR->DEVICEID[1] >> 0) & 0xFF) << 0;
+    uint64_t       id      = 0;
+    const uint64_t dev_id0 = NRF_FICR->DEVICEID[0];
+    const uint64_t dev_id1 = NRF_FICR->DEVICEID[1];
+    id |= ((dev_id0 >> BYTE_SHIFT_3) & BYTE_MASK) << BYTE_SHIFT_7;
+    id |= ((dev_id0 >> BYTE_SHIFT_2) & BYTE_MASK) << BYTE_SHIFT_6;
+    id |= ((dev_id0 >> BYTE_SHIFT_1) & BYTE_MASK) << BYTE_SHIFT_5;
+    id |= ((dev_id0 >> BYTE_SHIFT_0) & BYTE_MASK) << BYTE_SHIFT_4;
+    id |= ((dev_id1 >> BYTE_SHIFT_3) & BYTE_MASK) << BYTE_SHIFT_3;
+    id |= ((dev_id1 >> BYTE_SHIFT_2) & BYTE_MASK) << BYTE_SHIFT_2;
+    id |= ((dev_id1 >> BYTE_SHIFT_1) & BYTE_MASK) << BYTE_SHIFT_1;
+    id |= ((dev_id1 >> BYTE_SHIFT_0) & BYTE_MASK) << BYTE_SHIFT_0;
     return id;
 }
 
@@ -32,19 +36,19 @@ radio_address_get(void)
 
     if (count > 0)
     {
-        for (int i = 0; i < 6; i++)
+        for (uint32_t i = 0; i < BT_ADDR_SIZE; ++i)
         {
-            mac |= (uint64_t)addr[0].a.val[i] << (i * 8);
+            mac |= (uint64_t)addr[0].a.val[i] << (i * BITS_PER_BYTE);
         }
     }
     TLOG_INF(
         "BLE MAC: %02x:%02x:%02x:%02x:%02x:%02x",
-        (uint8_t)mac & 0xFF,
-        (uint8_t)((mac >> 8) & 0xFF),
-        (uint8_t)((mac >> 16) & 0xFF),
-        (uint8_t)((mac >> 24) & 0xFF),
-        (uint8_t)((mac >> 32) & 0xFF),
-        (uint8_t)((mac >> 40) & 0xFF));
+        (uint8_t)(mac >> BYTE_SHIFT_0) & BYTE_MASK,
+        (uint8_t)((mac >> BYTE_SHIFT_1) & BYTE_MASK),
+        (uint8_t)((mac >> BYTE_SHIFT_2) & BYTE_MASK),
+        (uint8_t)((mac >> BYTE_SHIFT_3) & BYTE_MASK),
+        (uint8_t)((mac >> BYTE_SHIFT_4) & BYTE_MASK),
+        (uint8_t)((mac >> BYTE_SHIFT_5) & BYTE_MASK));
     return mac;
 }
 
@@ -60,7 +64,7 @@ set_clock(const uint32_t unixtime, const bool flag_print_log)
         gmtime_r(&cur_time, &tm_time);
         TLOG_INF(
             "Set clock: %04d-%02d-%02d %02d:%02d:%02d (%" PRIu32 ")",
-            tm_time.tm_year + 1900,
+            tm_time.tm_year + TIME_UTILS_BASE_YEAR,
             tm_time.tm_mon + 1,
             tm_time.tm_mday,
             tm_time.tm_hour,

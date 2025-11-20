@@ -29,6 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdint.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/kernel.h>
@@ -37,6 +38,7 @@
 #include "sensirion_common.h"
 #include "sensirion_config.h"
 #include "sensirion_i2c_hal.h"
+#include "zephyr_api.h"
 
 LOG_MODULE_REGISTER(SENSIRION_I2C_HAL, LOG_LEVEL_INF);
 
@@ -61,7 +63,7 @@ sensirion_i2c_hal_select_bus(uint8_t bus_idx)
     {
         return -1; // Invalid bus index
     }
-    if (i2c_dev == NULL)
+    if (NULL == i2c_dev)
     {
         return -1; // No valid device found
     }
@@ -85,6 +87,7 @@ sensirion_i2c_hal_init(void)
 void
 sensirion_i2c_hal_free(void)
 {
+    // Initialized by Zephyr OS; nothing to be done here.
 }
 
 /**
@@ -97,13 +100,17 @@ sensirion_i2c_hal_free(void)
  * @param count   number of bytes to read from I2C and store in the buffer
  * @returns 0 on success, error code otherwise
  */
-int8_t
+int16_t
 sensirion_i2c_hal_read(uint8_t address, uint8_t* data, uint8_t count)
 {
-    const int8_t res = i2c_read(i2c_dev, data, count, address);
+    zephyr_api_ret_t res = i2c_read(i2c_dev, data, count, address);
     LOG_DBG("I2C read %d bytes from 0x%02X: res=%d", count, address, res);
     LOG_HEXDUMP_DBG(data, count, "data");
-    return res;
+    if ((res < INT16_MIN) || (res > INT16_MAX))
+    {
+        res = -1; // Clamp to int16_t range
+    }
+    return (int16_t)res;
 }
 
 /**
@@ -117,12 +124,17 @@ sensirion_i2c_hal_read(uint8_t address, uint8_t* data, uint8_t count)
  * @param count   number of bytes to read from the buffer and send over I2C
  * @returns 0 on success, error code otherwise
  */
-int8_t
+int16_t
 sensirion_i2c_hal_write(uint8_t address, const uint8_t* data, uint8_t count)
 {
     LOG_DBG("I2C write %d bytes to 0x%02X", count, address);
     LOG_HEXDUMP_DBG(data, count, "data");
-    return i2c_write(i2c_dev, data, count, address);
+    zephyr_api_ret_t ret = i2c_write(i2c_dev, data, count, address);
+    if ((ret < INT16_MIN) || (ret > INT16_MAX))
+    {
+        ret = -1; // Clamp to int16_t range
+    }
+    return (int16_t)ret;
 }
 
 /**

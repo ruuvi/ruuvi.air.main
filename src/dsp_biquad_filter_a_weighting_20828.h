@@ -6,7 +6,7 @@
 #define DSP_BIQUAD_FILTER_A_WEIGHTING_20828_H
 
 #include <stdint.h>
-#include "arm_math.h"
+#include <arm_math.h>
 
 #define DSP_BIQUAD_CASCADE_DF1_A_WEIGHTING_FILTER_NUM_2ND_ORDER_STAGES           (3)
 #define DSP_BIQUAD_CASCADE_DF1_A_WEIGHTING_FILTER_NUM_COEFFICIENTS_FOR_ONE_STAGE (5)

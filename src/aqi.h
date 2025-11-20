@@ -23,7 +23,7 @@ typedef enum air_quality_index_e
     AIR_QUALITY_NUM_INDEXES = AIR_QUALITY_INDEX_VERY_POOR + 1,
 } air_quality_index_e;
 
-typedef enum manual_brightness_level
+typedef enum manual_brightness_level_e
 {
     MANUAL_BRIGHTNESS_LEVEL_OFF = 0,
     MANUAL_BRIGHTNESS_LEVEL_NIGHT,
@@ -45,13 +45,13 @@ const rgb_led_exp_current_coefs_t*
 aqi_get_led_currents_alpha(void);
 
 void
-aqi_update_led(const float air_quality_index);
+aqi_update_led(const float32_t air_quality_index);
 
 void
 aqi_refresh_led(void);
 
 void
-aqi_recalc_auto_brightness_level(const float luminosity);
+aqi_recalc_auto_brightness_level(const float32_t luminosity);
 
 const manual_brightness_color_t*
 aqi_get_colors_table(const manual_brightness_level_e level);

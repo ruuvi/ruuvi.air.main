@@ -266,28 +266,28 @@ conv_mcumgr_op_to_str(const enum mcumgr_op_t op)
  *
  * This callback function is used to notify an application or system about a MCUmgr mgmt event.
  *
- * @param event		#mcumgr_op_t.
- * @param prev_status	#mgmt_cb_return of the previous handler calls, if it is an error then it
- *			will be the first error that was returned by a handler (i.e. this handler
- *			is being called for a notification only, the return code will be ignored).
- * @param rc		If ``prev_status`` is #MGMT_CB_ERROR_RC then this is the SMP error that
- *			was returned by the first handler that failed. If ``prev_status`` is
- *			#MGMT_CB_ERROR_ERR then this will be the group error rc code returned by
- *			the first handler that failed. If the handler wishes to raise an SMP
- *			error, this must be set to the #mcumgr_err_t status and #MGMT_CB_ERROR_RC
- *			must be returned by the function, if the handler wishes to raise a ret
- *			error, this must be set to the group ret status and #MGMT_CB_ERROR_ERR
- *			must be returned by the function.
- * @param group		If ``prev_status`` is #MGMT_CB_ERROR_ERR then this is the group of the
- *			ret error that was returned by the first handler that failed. If the
- *			handler wishes to raise a ret error, this must be set to the group ret
- *			status and #MGMT_CB_ERROR_ERR must be returned by the function.
- * @param abort_more	Set to true to abort further processing by additional handlers.
- * @param data		Optional event argument.
- * @param data_size	Size of optional event argument (0 if no data is provided).
+ * @param event        #mcumgr_op_t.
+ * @param prev_status    #mgmt_cb_return of the previous handler calls, if it is an error then it
+ *            will be the first error that was returned by a handler (i.e. this handler
+ *            is being called for a notification only, the return code will be ignored).
+ * @param rc        If ``prev_status`` is #MGMT_CB_ERROR_RC then this is the SMP error that
+ *            was returned by the first handler that failed. If ``prev_status`` is
+ *            #MGMT_CB_ERROR_ERR then this will be the group error rc code returned by
+ *            the first handler that failed. If the handler wishes to raise an SMP
+ *            error, this must be set to the #mcumgr_err_t status and #MGMT_CB_ERROR_RC
+ *            must be returned by the function, if the handler wishes to raise a ret
+ *            error, this must be set to the group ret status and #MGMT_CB_ERROR_ERR
+ *            must be returned by the function.
+ * @param group        If ``prev_status`` is #MGMT_CB_ERROR_ERR then this is the group of the
+ *            ret error that was returned by the first handler that failed. If the
+ *            handler wishes to raise a ret error, this must be set to the group ret
+ *            status and #MGMT_CB_ERROR_ERR must be returned by the function.
+ * @param abort_more    Set to true to abort further processing by additional handlers.
+ * @param data        Optional event argument.
+ * @param data_size    Size of optional event argument (0 if no data is provided).
  *
- * @return		#mgmt_cb_return indicating the status to return to the calling code (only
- *			checked when this is the first failure reported by a handler).
+ * @return        #mgmt_cb_return indicating the status to return to the calling code (only
+ *            checked when this is the first failure reported by a handler).
  */
 
 static void

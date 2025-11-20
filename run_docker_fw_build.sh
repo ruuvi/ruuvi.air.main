@@ -37,10 +37,10 @@ else
 fi
 
 PROJECT_DIR=$(basename "$PWD")
-PROJECT_NAME="$(basename "$PWD")"
 NCS_VERSION="v2.8.0"
 KEYS_DIR="$HOME/.signing_keys"
 NCS_DOCKER_DIR="$HOME/ncs_docker"
+USERNAME="$(id -un)"
 
 # --- Derive build directory from script name ---
 SCRIPT_BASENAME="$(basename "${SCRIPT_PATH}")"
@@ -64,17 +64,21 @@ mkdir -p "$NCS_DOCKER_DIR/ncs/toolchains"
 mkdir -p "$NCS_DOCKER_DIR/.nrfutil"
 
 docker run --rm -it \
+  --network none \
+  --cap-drop NET_ADMIN \
+  --cap-drop NET_RAW \
+  --cap-drop NET_BIND_SERVICE \
   --user "$(id -u)":"$(id -g)" \
-  -e HOME=$HOME \
-  -e USER="$(id -un)" \
+  -e HOME=/home/$USERNAME \
+  -e USER=$USERNAME \
   -e HOST_UID="$(id -u)" \
   -e HOST_GID="$(id -g)" \
-  -e HOST_USER="$(id -un)" \
+  -e HOST_USER=$USERNAME \
   -e HOST_GROUP="$(id -gn)" \
-  -v "$NCS_DOCKER_DIR:$HOME" \
-  -v "$(pwd):$HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}" \
-  -v "$KEYS_DIR:$HOME/.signing_keys:ro" \
-  -w $HOME \
+  -v "$NCS_DOCKER_DIR:/home/$USERNAME" \
+  -v "$(pwd):/home/$USERNAME/ncs/${NCS_VERSION}/${PROJECT_DIR}" \
+  -v "$KEYS_DIR:/home/$USERNAME/.signing_keys:ro" \
+  -w /home/$USERNAME \
   -e NCS_VERSION="$NCS_VERSION" \
   -e PROJECT_DIR="${PROJECT_DIR}" \
   -e SCRIPT_PATH=${SCRIPT_PATH} \

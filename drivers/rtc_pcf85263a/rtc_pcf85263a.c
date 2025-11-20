@@ -17,6 +17,7 @@
 #include <zephyr/drivers/rtc.h>
 #include <zephyr/retention/bootmode.h>
 #include <zephyr/sys/timeutil.h>
+#include <zephyr/sys_clock.h>
 #include <zephyr/logging/log.h>
 #include "rtc_utils.h"
 #include "rtc_pcf85263a_regs.h"
@@ -34,14 +35,23 @@ LOG_MODULE_REGISTER(RTC_PCF85263A, CONFIG_RTC_LOG_LEVEL);
 
 #define RTC_PCF85263A_MAX_RTC_INTA_OFFSET_MS (Z_HZ_ms + 50)
 
-struct pcf85263a_config {
+#define PCF85263A_CALC_NUM_REGS(first_reg, /* NOSONAR: must be macro, used in array size */        \
+				last_reg)                                                          \
+	(((last_reg) >= (first_reg)) ? ((last_reg) - (first_reg) + 1)                              \
+				     : ((last_reg) + PCF85263A_WRAP_AROUND_REG - (first_reg) + 1))
+
+#define RTC85263A_DELAY_BETWEEN_I2C_RETRIES_MS (10U)
+
+typedef int pcf85263a_ret_t;
+
+typedef struct pcf85263a_config_t {
 	const struct i2c_dt_spec i2c;
 #if CONFIG_RTC_PCF85263A_INT
 	const struct gpio_dt_spec gpio_inta;
 #endif /* CONFIG_RTC_PCF85263A_INT */
-};
+} pcf85263a_config_t;
 
-struct pcf85263a_data {
+typedef struct pcf85263a_data_t {
 	struct k_spinlock lock;
 	const struct device *dev;
 
@@ -51,7 +61,7 @@ struct pcf85263a_data {
 	int64_t rtc_inta_generated_at_tick;
 	uint32_t offset_nsec;
 #endif /* CONFIG_RTC_PCF85263A_INT */
-};
+} pcf85263a_data_t;
 
 static time_t rtc_utils_time_to_sec(const struct rtc_time *const p_time_rtc)
 {
@@ -103,19 +113,20 @@ static void pcf85263a_log_time_info(const char *const p_prefix,
 }
 #endif
 
-static int pcf85263a_read_regs_without_retries(const struct device *const dev,
-					       const uint8_t reg_addr, void *const p_buf,
-					       const size_t buf_len)
+static pcf85263a_ret_t pcf85263a_read_regs_without_retries(const struct device *const dev,
+							   const uint8_t reg_addr,
+							   void *const p_buf, const size_t buf_len)
 {
-	const struct pcf85263a_config *const config = dev->config;
+	const pcf85263a_config_t *const config = dev->config;
 	return i2c_write_read_dt(&config->i2c, &reg_addr, sizeof(reg_addr), p_buf, buf_len);
 }
 
-static int pcf85263a_write_regs_without_retries(const struct device *const dev,
-						const uint8_t reg_addr, uint8_t *const p_buf,
-						const size_t buf_len)
+static pcf85263a_ret_t pcf85263a_write_regs_without_retries(const struct device *const dev,
+							    const uint8_t reg_addr,
+							    uint8_t *const p_buf,
+							    const size_t buf_len)
 {
-	const struct pcf85263a_config *config = dev->config;
+	const pcf85263a_config_t *config = dev->config;
 	uint8_t reg_addr_buf[1] = {reg_addr};
 	struct i2c_msg msg[2] = {
 		{
@@ -133,25 +144,26 @@ static int pcf85263a_write_regs_without_retries(const struct device *const dev,
 	return i2c_transfer(config->i2c.bus, msg, sizeof(msg) / sizeof(msg[0]), config->i2c.addr);
 }
 
-static int pcf85263a_update_reg_without_retries(const struct device *const dev,
-						const uint8_t reg_addr, const uint8_t mask,
-						uint8_t val)
+static pcf85263a_ret_t pcf85263a_update_reg_without_retries(const struct device *const dev,
+							    const uint8_t reg_addr,
+							    const uint8_t mask, uint8_t val)
 {
-	const struct pcf85263a_config *config = dev->config;
+	const pcf85263a_config_t *config = dev->config;
 	return i2c_reg_update_byte_dt(&config->i2c, reg_addr, mask, val);
 }
 
 static bool pcf85263a_read_regs(const struct device *const dev, const uint8_t reg_addr,
 				void *const p_buf, const ssize_t buf_len)
 {
-	for (int i = 0; i < RTC_PCF85263A_NUM_I2C_RETRIES; i++) {
-		const int err = pcf85263a_read_regs_without_retries(dev, reg_addr, p_buf, buf_len);
+	for (int32_t i = 0; i < RTC_PCF85263A_NUM_I2C_RETRIES; ++i) {
+		const pcf85263a_ret_t err =
+			pcf85263a_read_regs_without_retries(dev, reg_addr, p_buf, buf_len);
 		if (0 == err) {
 			return true;
 		}
 		LOG_WRN("Failed to read reg addr 0x%02x, len %d, err %d, retry %u", reg_addr,
 			buf_len, err, i);
-		k_msleep(10); // Wait before retrying
+		k_msleep(RTC85263A_DELAY_BETWEEN_I2C_RETRIES_MS); // Wait before retrying
 	}
 	LOG_ERR("Failed to read reg addr 0x%02x, len %d", reg_addr, buf_len);
 	return false;
@@ -166,14 +178,15 @@ static bool pcf85263a_read_reg(const struct device *const dev, const uint8_t reg
 static bool pcf85263a_write_regs(const struct device *const dev, const uint8_t reg_addr,
 				 uint8_t *const p_buf, const size_t buf_len)
 {
-	for (int i = 0; i < RTC_PCF85263A_NUM_I2C_RETRIES; i++) {
-		const int err = pcf85263a_write_regs_without_retries(dev, reg_addr, p_buf, buf_len);
+	for (int32_t i = 0; i < RTC_PCF85263A_NUM_I2C_RETRIES; ++i) {
+		const pcf85263a_ret_t err =
+			pcf85263a_write_regs_without_retries(dev, reg_addr, p_buf, buf_len);
 		if (0 == err) {
 			return true;
 		}
 		LOG_WRN("Failed to write reg addr 0x%02x, len %d, err %d, retry %u", reg_addr,
 			buf_len, err, i);
-		k_msleep(10); // Wait before retrying
+		k_msleep(RTC85263A_DELAY_BETWEEN_I2C_RETRIES_MS); // Wait before retrying
 	}
 	LOG_ERR("Failed to write reg addr 0x%02x, len %d", reg_addr, buf_len);
 	return false;
@@ -187,15 +200,16 @@ static bool pcf85263a_write_reg(const struct device *const dev, const uint8_t re
 static bool pcf85263a_update_reg(const struct device *const dev, const uint8_t reg_addr,
 				 uint8_t mask, uint8_t val)
 {
-	for (int i = 0; i < RTC_PCF85263A_NUM_I2C_RETRIES; i++) {
-		const int err = pcf85263a_update_reg_without_retries(dev, reg_addr, mask, val);
+	for (int32_t i = 0; i < RTC_PCF85263A_NUM_I2C_RETRIES; ++i) {
+		const pcf85263a_ret_t err =
+			pcf85263a_update_reg_without_retries(dev, reg_addr, mask, val);
 		if (0 == err) {
 			return true;
 		}
 		LOG_WRN("Failed to update reg addr 0x%02x, mask 0x%02x, val 0x%02x, err %d, retry "
 			"%d",
 			reg_addr, mask, val, err, i);
-		k_msleep(10); // Wait before retrying
+		k_msleep(RTC85263A_DELAY_BETWEEN_I2C_RETRIES_MS); // Wait before retrying
 	}
 	LOG_ERR("Failed to update reg addr 0x%02x, mask 0x%02x, val 0x%02x", reg_addr, mask, val);
 	return false;
@@ -215,8 +229,9 @@ static bool pcf85263a_get_seconds(const struct device *const dev, uint8_t *const
 }
 #endif /* CONFIG_RTC_PCF85263A_INT */
 
-static int pcf85263a_get_time_from_hw(const struct device *dev, struct rtc_time *p_time_rtc,
-				      const bool flag_print_log)
+static pcf85263a_ret_t pcf85263a_get_time_from_hw(const struct device *dev,
+						  struct rtc_time *p_time_rtc,
+						  const bool flag_print_log)
 {
 	uint8_t raw_data[PCF85263A_CALC_NUM_REGS(PCF85263A_REG_STOP_ENABLE, PCF85263A_REG_YEARS)] =
 		{0};
@@ -230,8 +245,10 @@ static int pcf85263a_get_time_from_hw(const struct device *dev, struct rtc_time 
 		&raw_data[PCF85263A_CALC_NUM_REGS(PCF85263A_REG_STOP_ENABLE,
 						  PCF85263A_REG_100TH_SECONDS) -
 			  1];
-	p_time_rtc->tm_nsec = bcd2bin(p_raw_time[PCF85263A_REG_100TH_SECONDS]) * 10U * 1000U *
-			      1000U; // Convert 100th seconds to nanoseconds
+
+	p_time_rtc->tm_nsec = bcd2bin(p_raw_time[PCF85263A_REG_100TH_SECONDS]) *
+			      (NSEC_PER_SEC /
+			       PCF85263A_RTC_TICKS_PER_SEC); // Convert 100th seconds to nanoseconds
 	p_time_rtc->tm_sec =
 		bcd2bin(p_raw_time[PCF85263A_REG_SECONDS] & PCF85263A_REG_SECONDS_MASK);
 	p_time_rtc->tm_min =
@@ -266,9 +283,9 @@ static int pcf85263a_get_time_from_hw(const struct device *dev, struct rtc_time 
 	}
 	if (flag_print_log) {
 #if CONFIG_RTC_PCF85263A_INT
-		struct pcf85263a_data *data = dev->data;
+		const pcf85263a_data_t *const p_data = dev->data;
 		pcf85263a_log_time_info_with_counter("Time read from RTC", p_time_rtc,
-						     data->rtc_unix_time, time(NULL));
+						     p_data->rtc_unix_time, (uint32_t)time(NULL));
 #else
 		pcf85263a_log_time_info("Time read from RTC", p_time_rtc);
 #endif /* CONFIG_RTC_PCF85263A_INT */
@@ -276,9 +293,10 @@ static int pcf85263a_get_time_from_hw(const struct device *dev, struct rtc_time 
 	return 0;
 }
 
-static int pcf85263a_set_time(const struct device *dev, const struct rtc_time *p_time_rtc)
+static pcf85263a_ret_t pcf85263a_set_time(const struct device *dev,
+					  const struct rtc_time *p_time_rtc)
 {
-	const struct pcf85263a_config *config = dev->config;
+	const pcf85263a_config_t *config = dev->config;
 	const time_t new_secs = rtc_utils_time_to_sec(p_time_rtc);
 
 	if (!device_is_ready(dev)) {
@@ -314,13 +332,14 @@ static int pcf85263a_set_time(const struct device *dev, const struct rtc_time *p
 		PCF85263A_REG_RESET_CMD_CPR,            // Reset register: Clear prescaler
 		// Register address is reset to 0x00 after RESET_REG address (0x2F)
 		bin2bcd(0), // 100th seconds
-		bin2bcd(p_time_rtc->tm_sec),
-		bin2bcd(p_time_rtc->tm_min),
-		bin2bcd(p_time_rtc->tm_hour),
-		bin2bcd(p_time_rtc->tm_mday),
-		bin2bcd(p_time_rtc->tm_wday),
-		bin2bcd(p_time_rtc->tm_mon + 1),
-		bin2bcd(p_time_rtc->tm_year + TIME_UTILS_BASE_YEAR - PCF85263A_BASE_YEAR),
+		bin2bcd((uint8_t)p_time_rtc->tm_sec),
+		bin2bcd((uint8_t)p_time_rtc->tm_min),
+		bin2bcd((uint8_t)p_time_rtc->tm_hour),
+		bin2bcd((uint8_t)p_time_rtc->tm_mday),
+		bin2bcd((uint8_t)p_time_rtc->tm_wday),
+		bin2bcd((uint8_t)p_time_rtc->tm_mon + 1),
+		bin2bcd((uint8_t)((p_time_rtc->tm_year + TIME_UTILS_BASE_YEAR) -
+				  PCF85263A_BASE_YEAR)),
 	};
 
 	uint8_t buf2[2] = {
@@ -341,7 +360,7 @@ static int pcf85263a_set_time(const struct device *dev, const struct rtc_time *p
 			.flags = I2C_MSG_WRITE | I2C_MSG_RESTART | I2C_MSG_STOP,
 		},
 	};
-	int ret =
+	pcf85263a_ret_t ret =
 		i2c_transfer(config->i2c.bus, msg, sizeof(msg) / sizeof(msg[0]), config->i2c.addr);
 	if (0 != ret) {
 		LOG_ERR("Failed to set time: %d", ret);
@@ -357,13 +376,14 @@ static int pcf85263a_set_time(const struct device *dev, const struct rtc_time *p
 
 #if CONFIG_RTC_PCF85263A_INT
 	/* Update software counters to match the new time */
-	struct pcf85263a_data *data = dev->data;
+	pcf85263a_data_t *data = dev->data;
 	k_spinlock_key_t key = k_spin_lock(&data->lock);
 	const uint32_t delay_since_inta_generated_ticks =
 		(uint32_t)(k_uptime_ticks() - data->rtc_inta_generated_at_tick);
 	uint32_t delay_since_inta_generated_nsec =
 		k_ticks_to_ns_floor32(delay_since_inta_generated_ticks);
-	data->rtc_unix_time = new_secs - 1 + (delay_since_inta_generated_nsec / Z_HZ_ns);
+	data->rtc_unix_time =
+		(uint32_t)((new_secs - 1) + (delay_since_inta_generated_nsec / Z_HZ_ns));
 	delay_since_inta_generated_nsec %= Z_HZ_ns;
 	data->offset_nsec = Z_HZ_ns - delay_since_inta_generated_nsec;
 	struct timespec ts = {
@@ -380,7 +400,7 @@ static int pcf85263a_set_time(const struct device *dev, const struct rtc_time *p
 	return 0;
 }
 
-static int pcf85263a_get_time(const struct device *dev, struct rtc_time *p_time_rtc)
+static pcf85263a_ret_t pcf85263a_get_time(const struct device *dev, struct rtc_time *p_time_rtc)
 {
 	if (!device_is_ready(dev)) {
 		LOG_ERR("%s device not ready", dev->name);
@@ -454,9 +474,10 @@ static bool pcf85263a_configure_inta(const struct device *const dev)
 	return true;
 }
 
-static void inta_callback_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+static void inta_callback_handler(__unused const struct device *dev, struct gpio_callback *cb,
+				  __unused uint32_t pins)
 {
-	struct pcf85263a_data *data = CONTAINER_OF(cb, struct pcf85263a_data, inta_callback);
+	pcf85263a_data_t *data = CONTAINER_OF(cb, pcf85263a_data_t, inta_callback);
 
 	k_spinlock_key_t key = k_spin_lock(&data->lock);
 	data->rtc_inta_generated_at_tick = k_uptime_ticks();
@@ -468,10 +489,10 @@ static void inta_callback_handler(const struct device *dev, struct gpio_callback
 
 static bool configure_gpio_inta(const struct device *const dev)
 {
-	const struct pcf85263a_config *config = dev->config;
-	struct pcf85263a_data *data = dev->data;
+	const pcf85263a_config_t *config = dev->config;
+	pcf85263a_data_t *data = dev->data;
 
-	int ret = gpio_pin_configure_dt(&config->gpio_inta, GPIO_INPUT);
+	int32_t ret = gpio_pin_configure_dt(&config->gpio_inta, GPIO_INPUT);
 	if (0 != ret) {
 		LOG_ERR("Failed to configure INTA GPIO, error: %d", ret);
 		return false;
@@ -490,11 +511,53 @@ static bool configure_gpio_inta(const struct device *const dev)
 	return true;
 }
 
-static bool measure_delay_between_rtc_inta_and_set_time(
-	const struct device *const dev, const struct rtc_time *const p_initial_rtc_time,
-	const uint32_t initial_unix_time, uint32_t *const p_offset_nsec)
+typedef struct rtc_measure_delay_info_t {
+	bool flag_inta_req_detected;
+	bool flag_rtc_seconds_switched;
+	uint8_t cur_rtc_seconds;
+	int64_t rtc_time_incremented_at_tick;
+	int64_t rtc_inta_generated_at_tick;
+	const int64_t start_at_tick;
+	uint8_t initial_rtc_time_tm_sec;
+} rtc_measure_delay_info_t;
+
+static inline bool
+check_if_inta_detected_or_seconds_switched(const struct device *const dev,
+					   rtc_measure_delay_info_t *const p_info)
 {
-	struct pcf85263a_data *data = dev->data;
+	if (!p_info->flag_rtc_seconds_switched) {
+		if (!pcf85263a_get_seconds(dev, &p_info->cur_rtc_seconds)) {
+			LOG_ERR("Failed to read current RTC seconds");
+			return false;
+		}
+		if (p_info->cur_rtc_seconds != p_info->initial_rtc_time_tm_sec) {
+			p_info->rtc_time_incremented_at_tick = k_uptime_ticks();
+			p_info->flag_rtc_seconds_switched = true;
+		}
+	}
+	pcf85263a_data_t *const data = dev->data;
+	k_spinlock_key_t key = k_spin_lock(&data->lock);
+	if ((!p_info->flag_inta_req_detected) && (0 != data->rtc_inta_generated_at_tick)) {
+		p_info->flag_inta_req_detected = true;
+		p_info->rtc_inta_generated_at_tick = data->rtc_inta_generated_at_tick;
+		if (!p_info->flag_rtc_seconds_switched) {
+			data->rtc_unix_time -= 1;
+		}
+	}
+	k_spin_unlock(&data->lock, key);
+	if ((k_uptime_ticks() - p_info->start_at_tick) > k_ms_to_ticks_floor32(2 * Z_HZ_ms)) {
+		LOG_ERR("Timeout waiting for RTC seconds switch or INTA request");
+		return false;
+	}
+	return true;
+}
+
+static bool
+measure_delay_between_rtc_inta_and_set_time(const struct device *const dev,
+					    const struct rtc_time *const p_initial_rtc_time,
+					    uint32_t *const p_offset_nsec)
+{
+	pcf85263a_data_t *data = dev->data;
 	/* Measure the shift between the RTC seconds counter change and
 	   the interrupt generation on INTA. This is done by reading the
 	   current RTC seconds and comparing it with the start time.
@@ -502,45 +565,28 @@ static bool measure_delay_between_rtc_inta_and_set_time(
 	   current RTC seconds and the start time, taking into account
 	   the tick at which the INTA was generated. */
 
-	bool flag_inta_req_detected = false;
-	bool flag_rtc_seconds_switched = false;
-	uint8_t cur_rtc_seconds = 0;
-	int64_t rtc_time_incremented_at_tick = 0;
-	int64_t rtc_inta_generated_at_tick = 0;
-	const int64_t start_at_tick = k_uptime_ticks();
-	while (!flag_inta_req_detected || !flag_rtc_seconds_switched) {
-		if (!flag_rtc_seconds_switched) {
-			if (!pcf85263a_get_seconds(dev, &cur_rtc_seconds)) {
-				LOG_ERR("Failed to read current RTC seconds");
-				return false;
-			}
-			if (cur_rtc_seconds != p_initial_rtc_time->tm_sec) {
-				rtc_time_incremented_at_tick = k_uptime_ticks();
-				flag_rtc_seconds_switched = true;
-			}
-		}
-		k_spinlock_key_t key = k_spin_lock(&data->lock);
-		if ((!flag_inta_req_detected) && (0 != data->rtc_inta_generated_at_tick)) {
-			flag_inta_req_detected = true;
-			rtc_inta_generated_at_tick = data->rtc_inta_generated_at_tick;
-			if (!flag_rtc_seconds_switched) {
-				data->rtc_unix_time -= 1;
-			}
-		}
-		k_spin_unlock(&data->lock, key);
-		if ((k_uptime_ticks() - start_at_tick) > k_ms_to_ticks_floor32(2 * Z_HZ_ms)) {
-			LOG_ERR("Timeout waiting for RTC seconds switch or INTA request");
+	rtc_measure_delay_info_t info = {
+		.flag_inta_req_detected = false,
+		.flag_rtc_seconds_switched = false,
+		.cur_rtc_seconds = 0,
+		.rtc_time_incremented_at_tick = 0,
+		.rtc_inta_generated_at_tick = 0,
+		.start_at_tick = k_uptime_ticks(),
+		.initial_rtc_time_tm_sec = (uint8_t)p_initial_rtc_time->tm_sec,
+	};
+	while ((!info.flag_inta_req_detected) || (!info.flag_rtc_seconds_switched)) {
+		if (!check_if_inta_detected_or_seconds_switched(dev, &info)) {
 			return false;
 		}
 	}
 	const int32_t offset_ticks =
-		(int32_t)(rtc_inta_generated_at_tick - rtc_time_incremented_at_tick);
+		(int32_t)(info.rtc_inta_generated_at_tick - info.rtc_time_incremented_at_tick);
 	if (offset_ticks >= 0) {
 		if (offset_ticks > k_ms_to_ticks_floor32(RTC_PCF85263A_MAX_RTC_INTA_OFFSET_MS)) {
 			LOG_ERR("RTC time incremented at tick %" PRId64 ", "
 				"but INTA generated at tick %" PRId64 ", "
 				"offset is too large: %" PRId32 " ticks",
-				rtc_time_incremented_at_tick, rtc_inta_generated_at_tick,
+				info.rtc_time_incremented_at_tick, info.rtc_inta_generated_at_tick,
 				offset_ticks);
 			return false;
 		}
@@ -554,30 +600,30 @@ static bool measure_delay_between_rtc_inta_and_set_time(
 			LOG_ERR("RTC time incremented at tick %" PRId64 ", "
 				"but INTA generated at tick %" PRId64 ", "
 				"offset is too large: %" PRId32 " ticks",
-				rtc_time_incremented_at_tick, rtc_inta_generated_at_tick,
+				info.rtc_time_incremented_at_tick, info.rtc_inta_generated_at_tick,
 				offset_ticks);
 			return false;
 		}
 		const uint32_t offset_ticks_safe =
 			(offset_ticks < (-1 * k_ms_to_ticks_floor32(Z_HZ_ms)))
 				? 0
-				: k_ms_to_ticks_floor32(Z_HZ_ms) + offset_ticks;
+				: (k_ms_to_ticks_floor32(Z_HZ_ms) + offset_ticks);
 		*p_offset_nsec = k_ticks_to_ns_floor32(offset_ticks_safe);
 	}
 
-	LOG_INF("RTC seconds switched at tick  %" PRId64, rtc_time_incremented_at_tick);
-	LOG_INF("INTA request detected at tick %" PRId64, rtc_inta_generated_at_tick);
+	LOG_INF("RTC seconds switched at tick  %" PRId64, info.rtc_time_incremented_at_tick);
+	LOG_INF("INTA request detected at tick %" PRId64, info.rtc_inta_generated_at_tick);
 	LOG_INF("Delay between RTC and INTA: %" PRId32 " ticks, %" PRIu32 " ns", offset_ticks,
 		*p_offset_nsec);
 
 	k_spinlock_key_t key = k_spin_lock(&data->lock);
 	const uint32_t delay_since_inta_generated_ticks =
-		(uint32_t)(k_uptime_ticks() - rtc_inta_generated_at_tick);
+		(uint32_t)(k_uptime_ticks() - info.rtc_inta_generated_at_tick);
 	const uint32_t delay_since_inta_generated_nsec =
 		k_ticks_to_ns_floor32(delay_since_inta_generated_ticks);
 	struct timespec ts = {
 		.tv_sec = data->rtc_unix_time +
-			  (data->offset_nsec + delay_since_inta_generated_nsec) / Z_HZ_ns,
+			  ((data->offset_nsec + delay_since_inta_generated_nsec) / Z_HZ_ns),
 		.tv_nsec = (data->offset_nsec + delay_since_inta_generated_nsec) % Z_HZ_ns,
 	};
 	clock_settime(CLOCK_REALTIME, &ts);
@@ -589,10 +635,11 @@ static bool measure_delay_between_rtc_inta_and_set_time(
 }
 #endif /* CONFIG_RTC_PCF85263A_INT */
 
-static int pcf85263a_init(const struct device *dev)
+static int // NOSONAR: Zephyr API
+pcf85263a_init(const struct device *dev)
 {
-	const struct pcf85263a_config *config = dev->config;
-	struct pcf85263a_data *data = dev->data;
+	const pcf85263a_config_t *config = dev->config;
+	pcf85263a_data_t *data = dev->data;
 
 	data->dev = dev;
 
@@ -613,7 +660,7 @@ static int pcf85263a_init(const struct device *dev)
 		LOG_WRN("RTC is stopped, will reset RTC to start it");
 		need_reset = true;
 	} else {
-		int ret = pcf85263a_get_time_from_hw(dev, &initial_rtc_time, true);
+		pcf85263a_ret_t ret = pcf85263a_get_time_from_hw(dev, &initial_rtc_time, true);
 		if (0 != ret) {
 			if (-ENODATA != ret) {
 				LOG_ERR("Failed to get initial time from RTC hardware");
@@ -629,18 +676,17 @@ static int pcf85263a_init(const struct device *dev)
 			need_reset = true;
 		}
 	}
-	if (bootmode_check(BOOT_MODE_TYPE_FACTORY_RESET)) {
+	if (0 != bootmode_check(BOOT_MODE_TYPE_FACTORY_RESET)) {
 		LOG_WRN("Factory reset was performed - need to reset RTC");
 		need_reset = true;
 	}
 	if (need_reset) {
-		k_msleep(500);
 		LOG_INF("Performing RTC software reset");
 		if (!pcf85263a_software_reset(dev)) {
 			LOG_ERR("Failed to reset RTC hardware");
 			return -EIO;
 		}
-		int ret = pcf85263a_get_time_from_hw(dev, &initial_rtc_time, true);
+		pcf85263a_ret_t ret = pcf85263a_get_time_from_hw(dev, &initial_rtc_time, true);
 		if (0 != ret) {
 			LOG_ERR("Failed to get initial time from RTC hardware");
 			return ret;
@@ -648,7 +694,7 @@ static int pcf85263a_init(const struct device *dev)
 	}
 
 #if CONFIG_RTC_PCF85263A_INT
-	const uint32_t initial_unix_time = rtc_utils_time_to_sec(&initial_rtc_time);
+	const uint32_t initial_unix_time = (uint32_t)rtc_utils_time_to_sec(&initial_rtc_time);
 	LOG_WRN("Initial time read from RTC: %04d-%02d-%02d %02d:%02d:%02d, "
 		"Unix time: %" PRIu32,
 		initial_rtc_time.tm_year + TIME_UTILS_BASE_YEAR, initial_rtc_time.tm_mon + 1,
@@ -674,7 +720,7 @@ static int pcf85263a_init(const struct device *dev)
 	   to each other by a fixed value depending on the moment of time
 	   synchronization. */
 
-	if (!measure_delay_between_rtc_inta_and_set_time(dev, &initial_rtc_time, initial_unix_time,
+	if (!measure_delay_between_rtc_inta_and_set_time(dev, &initial_rtc_time,
 							 &data->offset_nsec)) {
 		LOG_ERR("Failed to calculate shift between RTC seconds and INTA");
 		return -EIO;
@@ -698,7 +744,7 @@ static int pcf85263a_init(const struct device *dev)
 			LOG_ERR("Failed to get time from RTC hardware, error: %d", ret);
 			return ret;
 		}
-		k_msleep(10);
+		k_msleep(RTC85263A_DELAY_BETWEEN_I2C_RETRIES_MS);
 	}
 #endif
 
@@ -711,16 +757,17 @@ static const struct rtc_driver_api pcf85263a_driver_api = {
 };
 
 #if CONFIG_RTC_PCF85263A_INT
-#define PCF85263A_CFG_INT(inst) .gpio_inta = GPIO_DT_SPEC_INST_GET_BY_IDX(inst, inta_gpios, 0),
+#define PCF85263A_CFG_INT(inst) /* NOSONAR */                                                      \
+	.gpio_inta = GPIO_DT_SPEC_INST_GET_BY_IDX(inst, inta_gpios, 0),
 #else
-#define PCF85263A_CFG_INT(inst)
+#define PCF85263A_CFG_INT(inst) /* NOSONAR */
 #endif
 
-#define PCF85263A_INIT(inst)                                                                       \
-	static const struct pcf85263a_config pcf85263a_config_##inst = {                           \
+#define PCF85263A_INIT(inst) /* NOSONAR */                                                         \
+	static const pcf85263a_config_t pcf85263a_config_##inst = {                                \
 		.i2c = I2C_DT_SPEC_INST_GET(inst), PCF85263A_CFG_INT(inst)};                       \
                                                                                                    \
-	static struct pcf85263a_data pcf85263a_data_##inst;                                        \
+	static pcf85263a_data_t pcf85263a_data_##inst;                                             \
                                                                                                    \
 	DEVICE_DT_INST_DEFINE(inst, &pcf85263a_init, NULL, &pcf85263a_data_##inst,                 \
 			      &pcf85263a_config_##inst, POST_KERNEL, CONFIG_RTC_INIT_PRIORITY,     \

@@ -28,7 +28,11 @@ typedef struct hist_log_record_t
     uint8_t                crc16[2];  // Offset: 38
 } hist_log_record_t;
 
-_Static_assert(sizeof(hist_log_record_t) == 40, "hist_log_record_t record size is not 40 bytes");
+#define HIST_LOG_EXPECTED_RECORD_SIZE (40U)
+
+_Static_assert(
+    HIST_LOG_EXPECTED_RECORD_SIZE == sizeof(hist_log_record_t),
+    "hist_log_record_t record size is not 40 bytes");
 
 typedef bool (*hist_log_record_handler_t)(
     const uint32_t                      timestamp,

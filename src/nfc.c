@@ -13,6 +13,8 @@
 #include "app_fw_ver.h"
 #include "app_version.h"
 #include "utils.h"
+#include "sys_utils.h"
+#include "zephyr_api.h"
 
 LOG_MODULE_REGISTER(NFC, LOG_LEVEL_WRN);
 
@@ -67,8 +69,6 @@ nfc_callback(void* context, nfc_t2t_event_t event, const uint8_t* data, size_t d
 static bool
 encode_nfc_msgs(uint8_t* buffer, uint32_t* len)
 {
-    int err;
-
     NFC_NDEF_TEXT_RECORD_DESC_DEF(
         nfc_en_text_rec_id,
         UTF_8,
@@ -103,7 +103,9 @@ encode_nfc_msgs(uint8_t* buffer, uint32_t* len)
 
     /* Add text records to NDEF text message */
     LOG_INF("Record: ID: %s", nfc_payload_id);
-    err = nfc_ndef_msg_record_add(&NFC_NDEF_MSG(nfc_text_msg), &NFC_NDEF_TEXT_RECORD_DESC(nfc_en_text_rec_id));
+    zephyr_api_ret_t err = nfc_ndef_msg_record_add(
+        &NFC_NDEF_MSG(nfc_text_msg),
+        &NFC_NDEF_TEXT_RECORD_DESC(nfc_en_text_rec_id));
     if (err < 0)
     {
         LOG_ERR("nfc_ndef_msg_record_add(id) failed, err=%d", err);
@@ -187,25 +189,25 @@ nfc_init(const uint64_t mac)
         nfc_payload_id,
         sizeof(nfc_payload_id),
         "ID: %02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-        (uint8_t)(device_id >> 56) & 0xFF,
-        (uint8_t)(device_id >> 48) & 0xFF,
-        (uint8_t)(device_id >> 40) & 0xFF,
-        (uint8_t)(device_id >> 32) & 0xFF,
-        (uint8_t)(device_id >> 24) & 0xFF,
-        (uint8_t)(device_id >> 16) & 0xFF,
-        (uint8_t)(device_id >> 8) & 0xFF,
-        (uint8_t)(device_id >> 0) & 0xFF);
+        (uint8_t)(device_id >> BYTE_SHIFT_7) & BYTE_MASK,
+        (uint8_t)(device_id >> BYTE_SHIFT_6) & BYTE_MASK,
+        (uint8_t)(device_id >> BYTE_SHIFT_5) & BYTE_MASK,
+        (uint8_t)(device_id >> BYTE_SHIFT_4) & BYTE_MASK,
+        (uint8_t)(device_id >> BYTE_SHIFT_3) & BYTE_MASK,
+        (uint8_t)(device_id >> BYTE_SHIFT_2) & BYTE_MASK,
+        (uint8_t)(device_id >> BYTE_SHIFT_1) & BYTE_MASK,
+        (uint8_t)(device_id >> BYTE_SHIFT_0) & BYTE_MASK);
 
     snprintf(
         nfc_payload_mac,
         sizeof(nfc_payload_mac),
         "MAC: %02X:%02X:%02X:%02X:%02X:%02X",
-        (uint8_t)(mac >> 40) & 0xFF,
-        (uint8_t)(mac >> 32) & 0xFF,
-        (uint8_t)(mac >> 24) & 0xFF,
-        (uint8_t)(mac >> 16) & 0xFF,
-        (uint8_t)(mac >> 8) & 0xFF,
-        (uint8_t)(mac >> 0) & 0xFF);
+        (uint8_t)(mac >> BYTE_SHIFT_5) & BYTE_MASK,
+        (uint8_t)(mac >> BYTE_SHIFT_4) & BYTE_MASK,
+        (uint8_t)(mac >> BYTE_SHIFT_3) & BYTE_MASK,
+        (uint8_t)(mac >> BYTE_SHIFT_2) & BYTE_MASK,
+        (uint8_t)(mac >> BYTE_SHIFT_1) & BYTE_MASK,
+        (uint8_t)(mac >> BYTE_SHIFT_0) & BYTE_MASK);
 
     /* Set up NFC */
     if (nfc_t2t_setup(nfc_callback, NULL) < 0)

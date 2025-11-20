@@ -23,22 +23,24 @@ _Static_assert(MOVING_AVG_WINDOW_SIZE_STAGE2 <= UINT8_MAX);
 #define INVALID_LUMINOSITY      (0xFFFFU)
 #define INVALID_SOUND_DBA       (0)
 
+#define SOUND_DBA_X100_MULTIPLIER (100)
+
 typedef struct moving_avg_data_t
 {
-    int16_t  ambient_temperature;
-    int16_t  ambient_humidity;
-    float    ambient_pressure;
-    uint16_t mass_concentration_pm1p0;
-    uint16_t mass_concentration_pm2p5;
-    uint16_t mass_concentration_pm4p0;
-    uint16_t mass_concentration_pm10p0;
-    int16_t  voc_index;
-    int16_t  nox_index;
-    uint16_t co2;
-    uint16_t luminosity;
-    int16_t  sound_inst_dba_x100;
-    int16_t  sound_avg_dba_x100;
-    int16_t  sound_peak_spl_db_x100;
+    int16_t   ambient_temperature;
+    int16_t   ambient_humidity;
+    float32_t ambient_pressure;
+    uint16_t  mass_concentration_pm1p0;
+    uint16_t  mass_concentration_pm2p5;
+    uint16_t  mass_concentration_pm4p0;
+    uint16_t  mass_concentration_pm10p0;
+    int16_t   voc_index;
+    int16_t   nox_index;
+    uint16_t  co2;
+    uint16_t  luminosity;
+    int16_t   sound_inst_dba_x100;
+    int16_t   sound_avg_dba_x100;
+    int16_t   sound_peak_spl_db_x100;
 } moving_avg_data_t;
 
 typedef struct moving_avg_accum_data_t
@@ -92,7 +94,7 @@ static bool
 moving_avg_data_append(moving_avg_arr_t* const p_moving_avg, const moving_avg_data_t* const p_data)
 {
     p_moving_avg->measurements[p_moving_avg->cnt] = *p_data;
-    p_moving_avg->cnt++;
+    p_moving_avg->cnt += 1;
     if (p_moving_avg->cnt >= p_moving_avg->size)
     {
         p_moving_avg->cnt = 0;
@@ -105,22 +107,22 @@ moving_avg_data_t
 moving_avg_data_get_avg(const moving_avg_arr_t* const p_moving_avg)
 {
     moving_avg_accum_data_t accum = {
-        .ambient_temperature       = AVG_ACCUM_INIT_I16(SEN66_INVALID_RAW_VALUE_TEMPERATURE),
-        .ambient_humidity          = AVG_ACCUM_INIT_I16(SEN66_INVALID_RAW_VALUE_HUMIDITY),
-        .ambient_pressure          = AVG_ACCUM_INIT_F32(),
-        .mass_concentration_pm1p0  = AVG_ACCUM_INIT_U16(SEN66_INVALID_RAW_VALUE_PM),
-        .mass_concentration_pm2p5  = AVG_ACCUM_INIT_U16(SEN66_INVALID_RAW_VALUE_PM),
-        .mass_concentration_pm4p0  = AVG_ACCUM_INIT_U16(SEN66_INVALID_RAW_VALUE_PM),
-        .mass_concentration_pm10p0 = AVG_ACCUM_INIT_U16(SEN66_INVALID_RAW_VALUE_PM),
-        .voc_index                 = AVG_ACCUM_INIT_I16(SEN66_INVALID_RAW_VALUE_VOC),
-        .nox_index                 = AVG_ACCUM_INIT_I16(SEN66_INVALID_RAW_VALUE_NOX),
-        .co2                       = AVG_ACCUM_INIT_U16(SEN66_INVALID_RAW_VALUE_CO2),
-        .battery_voltage_mv        = AVG_ACCUM_INIT_U16(INVALID_BATTERY_VOLTAGE),
-        .luminosity                = AVG_ACCUM_INIT_U16(INVALID_LUMINOSITY),
-        .sound_dba_avg_x100        = AVG_ACCUM_INIT_I16(INVALID_SOUND_DBA),
+        .ambient_temperature       = avg_accum_init_i16(SEN66_INVALID_RAW_VALUE_TEMPERATURE),
+        .ambient_humidity          = avg_accum_init_i16(SEN66_INVALID_RAW_VALUE_HUMIDITY),
+        .ambient_pressure          = avg_accum_init_f32(),
+        .mass_concentration_pm1p0  = avg_accum_init_u16(SEN66_INVALID_RAW_VALUE_PM),
+        .mass_concentration_pm2p5  = avg_accum_init_u16(SEN66_INVALID_RAW_VALUE_PM),
+        .mass_concentration_pm4p0  = avg_accum_init_u16(SEN66_INVALID_RAW_VALUE_PM),
+        .mass_concentration_pm10p0 = avg_accum_init_u16(SEN66_INVALID_RAW_VALUE_PM),
+        .voc_index                 = avg_accum_init_i16(SEN66_INVALID_RAW_VALUE_VOC),
+        .nox_index                 = avg_accum_init_i16(SEN66_INVALID_RAW_VALUE_NOX),
+        .co2                       = avg_accum_init_u16(SEN66_INVALID_RAW_VALUE_CO2),
+        .battery_voltage_mv        = avg_accum_init_u16(INVALID_BATTERY_VOLTAGE),
+        .luminosity                = avg_accum_init_u16(INVALID_LUMINOSITY),
+        .sound_dba_avg_x100        = avg_accum_init_i16(INVALID_SOUND_DBA),
         .sound_dba_peak_x100       = INVALID_SOUND_DBA,
     };
-    for (int i = 0; i < p_moving_avg->size; ++i)
+    for (int32_t i = 0; i < p_moving_avg->size; ++i)
     {
         const moving_avg_data_t* const p_data = &p_moving_avg->measurements[i];
         avg_accum_add_i16(&accum.ambient_temperature, p_data->ambient_temperature);
@@ -136,13 +138,14 @@ moving_avg_data_get_avg(const moving_avg_arr_t* const p_moving_avg)
         avg_accum_add_u16(&accum.luminosity, p_data->luminosity);
         avg_accum_add_i16(&accum.sound_dba_inst_x100, p_data->sound_inst_dba_x100);
         avg_accum_add_i16(&accum.sound_dba_avg_x100, p_data->sound_avg_dba_x100);
-        if (INVALID_SOUND_DBA != p_data->sound_peak_spl_db_x100)
+
+        // If the current peak is valid, and either the accumulated peak is invalid or
+        // the current peak is higher than the accumulated peak, update the accumulated peak
+        if ((INVALID_SOUND_DBA != p_data->sound_peak_spl_db_x100)
+            && ((INVALID_SOUND_DBA == accum.sound_dba_peak_x100)
+                || (accum.sound_dba_peak_x100 < p_data->sound_peak_spl_db_x100)))
         {
-            if ((INVALID_SOUND_DBA == accum.sound_dba_peak_x100)
-                || (accum.sound_dba_peak_x100 < p_data->sound_peak_spl_db_x100))
-            {
-                accum.sound_dba_peak_x100 = p_data->sound_peak_spl_db_x100;
-            }
+            accum.sound_dba_peak_x100 = p_data->sound_peak_spl_db_x100;
         }
     }
     const moving_avg_data_t data = {
@@ -164,6 +167,26 @@ moving_avg_data_get_avg(const moving_avg_arr_t* const p_moving_avg)
     return data;
 }
 
+static int16_t
+conv_sound_dba_float_to_x100(const float32_t sound_dba)
+{
+    if ((bool)isnan(sound_dba))
+    {
+        return INVALID_SOUND_DBA;
+    }
+    return (int16_t)lrintf(sound_dba * SOUND_DBA_X100_MULTIPLIER);
+}
+
+static float32_t
+conv_sound_dba_x100_to_float(const int16_t sound_dba_x100)
+{
+    if (INVALID_SOUND_DBA == sound_dba_x100)
+    {
+        return NAN;
+    }
+    return (float32_t)sound_dba_x100 / SOUND_DBA_X100_MULTIPLIER;
+}
+
 bool
 moving_avg_append(const sensors_measurement_t* const p_measurement)
 {
@@ -178,15 +201,13 @@ moving_avg_append(const sensors_measurement_t* const p_measurement)
         .voc_index                 = p_measurement->sen66.voc_index,
         .nox_index                 = p_measurement->sen66.nox_index,
         .co2                       = p_measurement->sen66.co2,
-        .luminosity                = isnan(p_measurement->luminosity) ? INVALID_LUMINOSITY
-                                                                      : (uint16_t)lrintf(p_measurement->luminosity),
-        .sound_inst_dba_x100       = isnan(p_measurement->sound_inst_dba) ? INVALID_SOUND_DBA
-                                                                          : (int16_t)(p_measurement->sound_inst_dba * 100.0f),
-        .sound_avg_dba_x100        = isnan(p_measurement->sound_avg_dba) ? INVALID_SOUND_DBA
-                                                                         : (int16_t)(p_measurement->sound_avg_dba * 100.0f),
-        .sound_peak_spl_db_x100    = isnan(p_measurement->sound_peak_spl_db)
-                                         ? INVALID_SOUND_DBA
-                                         : (int16_t)(p_measurement->sound_peak_spl_db * 100.0f),
+
+        .luminosity = isnan(p_measurement->luminosity) ? INVALID_LUMINOSITY
+                                                       : (uint16_t)lrintf(p_measurement->luminosity),
+
+        .sound_inst_dba_x100    = conv_sound_dba_float_to_x100(p_measurement->sound_inst_dba),
+        .sound_avg_dba_x100     = conv_sound_dba_float_to_x100(p_measurement->sound_avg_dba),
+        .sound_peak_spl_db_x100 = conv_sound_dba_float_to_x100(p_measurement->sound_peak_spl_db),
     };
     if (moving_avg_data_append(&g_moving_avg1, &data))
     {
@@ -218,16 +239,10 @@ moving_avg_get_accum(const measurement_cnt_t measurement_cnt, const radio_mac_t 
         .dps310_pressure                 = avg_data.ambient_pressure,
         .shtc3_temperature               = NAN,
         .shtc3_humidity                  = NAN,
-        .luminosity        = (INVALID_LUMINOSITY == avg_data.luminosity) ? NAN : (float)avg_data.luminosity,
-        .sound_inst_dba    = (INVALID_SOUND_DBA == avg_data.sound_inst_dba_x100)
-                                 ? NAN
-                                 : (float)avg_data.sound_inst_dba_x100 / 100.0f,
-        .sound_avg_dba     = (INVALID_SOUND_DBA == avg_data.sound_avg_dba_x100)
-                                 ? NAN
-                                 : (float)avg_data.sound_avg_dba_x100 / 100.0f,
-        .sound_peak_spl_db = (INVALID_SOUND_DBA == avg_data.sound_peak_spl_db_x100)
-                                 ? NAN
-                                 : (float)avg_data.sound_peak_spl_db_x100 / 100.0f,
+        .luminosity        = (INVALID_LUMINOSITY == avg_data.luminosity) ? NAN : (float32_t)avg_data.luminosity,
+        .sound_inst_dba    = conv_sound_dba_x100_to_float(avg_data.sound_inst_dba_x100),
+        .sound_avg_dba     = conv_sound_dba_x100_to_float(avg_data.sound_avg_dba_x100),
+        .sound_peak_spl_db = conv_sound_dba_x100_to_float(avg_data.sound_peak_spl_db_x100),
     };
 
     const re_e1_data_t e1_data = data_fmt_e1_init(

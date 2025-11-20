@@ -16,6 +16,8 @@
 #include "opt_rgb_ctrl.h"
 #include "data_fmt_e1.h"
 #include "data_fmt_6.h"
+#include "sys_utils.h"
+#include "zephyr_api.h"
 
 _Static_assert(sizeof(measurement_cnt_t) == sizeof(re_e1_seq_cnt_t), "");
 _Static_assert(sizeof(radio_mac_t) == sizeof(re_e1_mac_addr_t), "");
@@ -41,13 +43,21 @@ LOG_MODULE_REGISTER(ble_adv, LOG_LEVEL_INF);
 #define RUUVI_MANUFACTURER_ID (0x0499U)
 #define RUUVI_SERVICE_UUID    (0xFC98)
 
-enum ble_adv_type_t
+#define NUM_RECORDS_IN_ADVS_PACKET     (3)
+#define NUM_RECORDS_IN_EXT_ADVS_PACKET (2)
+#define NUM_RECORDS_IN_SCAN_RSP_PACKET (1)
+
+#define BLE_MANUFACTURER_DATA_BUF_SIZE_LEGACY   (22)
+#define BLE_MANUFACTURER_DATA_BUF_SIZE_EXTENDED (42)
+#define BLE_MANUFACTURER_DATA_OFFSET            (2)
+
+typedef enum ble_adv_type_e
 {
     BLE_ADV_TYPE_NORMAL   = 0,
     BLE_ADV_TYPE_EXTENDED = 1,
     BLE_ADV_TYPE_CODED    = 2,
     BLE_ADV_TYPE_NUM,
-};
+} ble_adv_type_e;
 
 typedef struct ble_adv_params_t
 {
@@ -75,19 +85,19 @@ typedef struct ble_adv_info_t
 
 static char g_bt_name[sizeof(CONFIG_BT_DEVICE_NAME) + 5];
 
-static uint8_t g_mfg_data[22] = {
-    RUUVI_MANUFACTURER_ID & 0xFFU,
-    (RUUVI_MANUFACTURER_ID >> 8U) & 0xFFU,
+static uint8_t g_mfg_data[BLE_MANUFACTURER_DATA_BUF_SIZE_LEGACY] = {
+    RUUVI_MANUFACTURER_ID & BYTE_MASK,
+    (RUUVI_MANUFACTURER_ID >> BYTE_SHIFT_1) & BYTE_MASK,
 };
 
-static uint8_t g_mfg_data_ext[42] = {
-    RUUVI_MANUFACTURER_ID & 0xFFU,
-    (RUUVI_MANUFACTURER_ID >> 8U) & 0xFFU,
+static uint8_t g_mfg_data_ext[BLE_MANUFACTURER_DATA_BUF_SIZE_EXTENDED] = {
+    RUUVI_MANUFACTURER_ID & BYTE_MASK,
+    (RUUVI_MANUFACTURER_ID >> BYTE_SHIFT_1) & BYTE_MASK,
 };
 
-static const struct bt_data g_ad[] = {
+static const struct bt_data g_ad[NUM_RECORDS_IN_ADVS_PACKET] = {
     BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-    BT_DATA_BYTES(BT_DATA_UUID16_ALL, RUUVI_SERVICE_UUID & 0xFFU, (RUUVI_SERVICE_UUID >> 8) & 0xFFU),
+    BT_DATA_BYTES(BT_DATA_UUID16_ALL, RUUVI_SERVICE_UUID& BYTE_MASK, (RUUVI_SERVICE_UUID >> BYTE_SHIFT_1) & BYTE_MASK),
 #if IS_ENABLED(CONFIG_RUUVI_AIR_ENABLE_BLE_LOGGING)
     BT_DATA_BYTES(BT_DATA_UUID128_ALL, LOGGER_BACKEND_BLE_ADV_UUID_DATA),
 #else
@@ -95,12 +105,14 @@ static const struct bt_data g_ad[] = {
 #endif
 };
 
-static const struct bt_data g_ad_ext[] = {
+static const struct bt_data g_ad_ext[NUM_RECORDS_IN_EXT_ADVS_PACKET] = {
     BT_DATA(BT_DATA_MANUFACTURER_DATA, g_mfg_data_ext, sizeof(g_mfg_data_ext)),
-    BT_DATA_BYTES(BT_DATA_UUID16_ALL, RUUVI_SERVICE_UUID & 0xFFU, (RUUVI_SERVICE_UUID >> 8) & 0xFFU),
+    BT_DATA_BYTES(BT_DATA_UUID16_ALL, RUUVI_SERVICE_UUID& BYTE_MASK, (RUUVI_SERVICE_UUID >> BYTE_SHIFT_1) & BYTE_MASK),
 };
 
-static const struct bt_data g_sd[] = { BT_DATA(BT_DATA_NAME_COMPLETE, g_bt_name, sizeof(g_bt_name) - 1) };
+static const struct bt_data g_sd[NUM_RECORDS_IN_SCAN_RSP_PACKET] = {
+    BT_DATA(BT_DATA_NAME_COMPLETE, g_bt_name, sizeof(g_bt_name) - 1),
+};
 
 static void
 adv_norm_connected_cb(struct bt_le_ext_adv* p_adv, struct bt_le_ext_adv_connected_info* p_conn_info);
@@ -163,7 +175,10 @@ static ble_adv_info_t g_ble_adv_info[BLE_ADV_TYPE_NUM] = {
     [BLE_ADV_TYPE_CODED] = {
         .name = "Coded",
         .params    = {
-            .bt_le_adv_opts = BT_LE_ADV_OPT_USE_IDENTITY | BT_LE_ADV_OPT_EXT_ADV | BT_LE_ADV_OPT_CODED | BT_LE_ADV_OPT_USE_TX_POWER,
+            .bt_le_adv_opts = BT_LE_ADV_OPT_USE_IDENTITY
+                | BT_LE_ADV_OPT_EXT_ADV
+                | BT_LE_ADV_OPT_CODED
+                | BT_LE_ADV_OPT_USE_TX_POWER,
             .interval_min = RUUVI_CODED_ADV_INTERVAL_MIN,
             .interval_max = RUUVI_CODED_ADV_INTERVAL_MAX,
             .is_connectable = RUUVI_BLE_ADV_CODED_IS_CONNECTABLE,
@@ -193,6 +208,26 @@ static measurement_cnt_t     g_measurement_cnt;
 static sensors_flags_t       g_ble_adv_flags;
 
 static void
+send_data_over_nus(void)
+{
+    for (int32_t i = 0; i < BLE_ADV_TYPE_NUM; ++i)
+    {
+        ble_adv_info_t* const p_adv_info = &g_ble_adv_info[i];
+        if ((NULL != p_adv_info->p_conn) && nus_is_notif_enabled())
+        {
+            const zephyr_api_ret_t res = bt_nus_send(
+                p_adv_info->p_conn,
+                &g_mfg_data_ext[BLE_MANUFACTURER_DATA_OFFSET],
+                RE_E1_OFFSET_ADDR_MSB);
+            if (0 != res)
+            {
+                TLOG_ERR("nus_send_data failed, err %d", res);
+            }
+        }
+    }
+}
+
+static void
 update_ble_adv_data(
     const sensors_measurement_t* const p_measurement,
     const measurement_cnt_t            measurement_cnt,
@@ -201,14 +236,14 @@ update_ble_adv_data(
 {
     const re_6_data_t data_format_6 = data_fmt_6_init(
         p_measurement,
-        (uint16_t)(measurement_cnt & 0xFFFFU),
+        (uint16_t)(measurement_cnt & UINT16_MASK),
         radio_mac,
         (re_6_flags_t) {
             .flag_calibration_in_progress = flags.flag_calibration_in_progress,
             .flag_button_pressed          = flags.flag_button_pressed,
             .flag_rtc_running_on_boot     = flags.flag_rtc_running_on_boot,
         });
-    re_status_t enc_code = re_6_encode(&g_mfg_data[2], &data_format_6);
+    re_status_t enc_code = re_6_encode(&g_mfg_data[BLE_MANUFACTURER_DATA_OFFSET], &data_format_6);
     if (RE_SUCCESS != enc_code)
     {
         TLOG_ERR("re_6_encode failed (err %d)", enc_code);
@@ -216,9 +251,12 @@ update_ble_adv_data(
 #if !IS_ENABLED(CONFIG_RUUVI_AIR_ENABLE_BLE_LOGGING)
     LOG_HEXDUMP_INF(g_mfg_data, sizeof(g_mfg_data), "Sending advertising data:");
 #endif
-    nfc_update_data(&g_mfg_data[2], sizeof(g_mfg_data) - 2);
+    nfc_update_data(&g_mfg_data[BLE_MANUFACTURER_DATA_OFFSET], sizeof(g_mfg_data) - BLE_MANUFACTURER_DATA_OFFSET);
 
-    memset(&g_mfg_data_ext[2], 0xFF, sizeof(g_mfg_data_ext) - 2);
+    memset(
+        &g_mfg_data_ext[BLE_MANUFACTURER_DATA_OFFSET],
+        UINT8_MAX,
+        sizeof(g_mfg_data_ext) - BLE_MANUFACTURER_DATA_OFFSET);
     const re_e1_data_t data_e1 = data_fmt_e1_init(
         p_measurement,
         measurement_cnt,
@@ -228,7 +266,7 @@ update_ble_adv_data(
             .flag_button_pressed          = flags.flag_button_pressed,
             .flag_rtc_running_on_boot     = flags.flag_rtc_running_on_boot,
         });
-    enc_code = re_e1_encode(&g_mfg_data_ext[2], &data_e1);
+    enc_code = re_e1_encode(&g_mfg_data_ext[BLE_MANUFACTURER_DATA_OFFSET], &data_e1);
     if (RE_SUCCESS != enc_code)
     {
         TLOG_ERR("re_e0_encode failed (err %d)", enc_code);
@@ -240,25 +278,14 @@ update_ble_adv_data(
     // Send data to connected device via NUS
     if (!nus_is_reading_hist_in_progress())
     {
-        for (int i = 0; i < BLE_ADV_TYPE_NUM; ++i)
-        {
-            ble_adv_info_t* const p_adv_info = &g_ble_adv_info[i];
-            if ((NULL != p_adv_info->p_conn) && nus_is_notif_enabled())
-            {
-                const int res = bt_nus_send(p_adv_info->p_conn, &g_mfg_data_ext[2], RE_E1_OFFSET_ADDR_MSB);
-                if (0 != res)
-                {
-                    TLOG_ERR("nus_send_data failed, err %d", res);
-                }
-            }
-        }
+        send_data_over_nus();
     }
 }
 
 static ble_adv_info_t*
-ble_adv_find_by_adv(struct bt_le_ext_adv* p_adv)
+ble_adv_find_by_adv(const struct bt_le_ext_adv* const p_adv)
 {
-    for (int i = 0; i < BLE_ADV_TYPE_NUM; i++)
+    for (int32_t i = 0; i < BLE_ADV_TYPE_NUM; ++i)
     {
         if (g_ble_adv_info[i].p_adv == p_adv)
         {
@@ -269,9 +296,9 @@ ble_adv_find_by_adv(struct bt_le_ext_adv* p_adv)
 }
 
 static ble_adv_info_t*
-ble_adv_find_by_conn(struct bt_conn* const p_conn)
+ble_adv_find_by_conn(const struct bt_conn* const p_conn)
 {
-    for (int i = 0; i < BLE_ADV_TYPE_NUM; i++)
+    for (int32_t i = 0; i < BLE_ADV_TYPE_NUM; ++i)
     {
         if (g_ble_adv_info[i].p_conn == p_conn)
         {
@@ -298,12 +325,12 @@ on_connect_handler(ble_adv_info_t* const p_info, struct bt_conn* const p_conn)
         0,      /* slave latency */
         400     /* supervision timeout (500 ms) */
     );
-    int res = bt_conn_le_param_update(p_conn, &conn_params);
+    zephyr_api_ret_t res = bt_conn_le_param_update(p_conn, &conn_params);
     if (0 != res)
     {
         TLOG_ERR("PHY update request failed for 15 ms connection interval, err %d", res);
         TLOG_INF("Switch to 20 ms interval for Advertiser[%s]", g_ble_adv_info[BLE_ADV_TYPE_NORMAL].name);
-        struct bt_le_conn_param conn_params = *BT_LE_CONN_PARAM(
+        conn_params = *BT_LE_CONN_PARAM(
             0x0010, /* interval_min: 0x0010 * 1.25 ms = 20 ms */
             0x0010, /* interval_max: same as min for stable timing */
             0,      /* slave latency */
@@ -332,7 +359,7 @@ adv_norm_connected_cb(struct bt_le_ext_adv* p_adv, struct bt_le_ext_adv_connecte
         (void*)p_conn_info->conn);
 
     TLOG_INF("Switch PHY to 2M for Advertiser[%s]", g_ble_adv_info[BLE_ADV_TYPE_NORMAL].name);
-    int res = bt_conn_le_phy_update(p_conn_info->conn, BT_CONN_LE_PHY_PARAM_2M);
+    zephyr_api_ret_t res = bt_conn_le_phy_update(p_conn_info->conn, BT_CONN_LE_PHY_PARAM_2M);
     if (0 != res)
     {
         TLOG_ERR("PHY update request for 2M failed, err %d", res);
@@ -369,18 +396,21 @@ adv_coded_connected_cb(struct bt_le_ext_adv* p_adv, struct bt_le_ext_adv_connect
 }
 
 static void
-adv_norm_sent_cb(struct bt_le_ext_adv* adv, struct bt_le_ext_adv_sent_info* info)
+adv_norm_sent_cb(__unused struct bt_le_ext_adv* adv, __unused struct bt_le_ext_adv_sent_info* info)
 {
+    TLOG_DBG("Advertiser[%s] sent callback called", g_ble_adv_info[BLE_ADV_TYPE_NORMAL].name);
 }
 
 static void
-adv_ext_sent_cb(struct bt_le_ext_adv* adv, struct bt_le_ext_adv_sent_info* info)
+adv_ext_sent_cb(__unused struct bt_le_ext_adv* adv, __unused struct bt_le_ext_adv_sent_info* info)
 {
+    TLOG_DBG("Advertiser[%s] sent callback called", g_ble_adv_info[BLE_ADV_TYPE_EXTENDED].name);
 }
 
 static void
-adv_coded_sent_cb(struct bt_le_ext_adv* adv, struct bt_le_ext_adv_sent_info* info)
+adv_coded_sent_cb(__unused struct bt_le_ext_adv* adv, __unused struct bt_le_ext_adv_sent_info* info)
 {
+    TLOG_DBG("Advertiser[%s] sent callback called", g_ble_adv_info[BLE_ADV_TYPE_CODED].name);
 }
 
 static bool
@@ -399,7 +429,7 @@ ble_adv_recreate(ble_adv_info_t* const p_info, const bool flag_connectable)
     if (NULL != p_info->p_adv)
     {
         TLOG_WRN("Stop advertising for Advertiser[%s]", p_info->name);
-        int res = bt_le_ext_adv_stop(p_info->p_adv);
+        zephyr_api_ret_t res = bt_le_ext_adv_stop(p_info->p_adv);
         if (0 != res)
         {
             TLOG_ERR("bt_le_ext_adv_stop failed for Advertiser[%s], err %d", p_info->name, res);
@@ -418,12 +448,12 @@ ble_adv_recreate(ble_adv_info_t* const p_info, const bool flag_connectable)
     p_info->is_connectable = flag_connectable;
     TLOG_WRN("Creating new Advertiser[%s]: %s", p_info->name, flag_connectable ? "connectable" : "non-connectable");
     uint32_t bt_le_adv_opts = p_info->params.bt_le_adv_opts;
-    bt_le_adv_opts |= (flag_connectable ? BT_LE_ADV_OPT_CONNECTABLE : 0);
+    bt_le_adv_opts |= (flag_connectable ? BT_LE_ADV_OPT_CONNECTABLE : 0U);
     if (!flag_connectable)
     {
-        bt_le_adv_opts &= ~BT_LE_ADV_OPT_SCANNABLE;
+        bt_le_adv_opts &= (uint32_t)~BT_LE_ADV_OPT_SCANNABLE;
     }
-    const int res = bt_le_ext_adv_create(
+    const zephyr_api_ret_t res = bt_le_ext_adv_create(
         BT_LE_ADV_PARAM(bt_le_adv_opts, p_info->params.interval_min, p_info->params.interval_max, NULL),
         &p_info->adv_cb,
         &p_info->p_adv);
@@ -435,87 +465,128 @@ ble_adv_recreate(ble_adv_info_t* const p_info, const bool flag_connectable)
     return true;
 }
 
-static void
-advertise(struct k_work* work)
+static bool
+check_if_connection_established(void)
 {
-    update_ble_adv_data(&g_measurement, g_measurement_cnt, g_ble_mac, g_ble_adv_flags);
-
-    bool flag_connection_established = false;
-    for (int i = 0; i < BLE_ADV_TYPE_NUM; i++)
+    for (int32_t i = 0; i < BLE_ADV_TYPE_NUM; ++i)
     {
         const ble_adv_info_t* const p_info = &g_ble_adv_info[i];
         if (NULL != p_info->p_conn)
         {
-            flag_connection_established = true;
-            break;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+ble_adv_recreate_if_needed(ble_adv_info_t* const p_info, const bool flag_connection_established)
+{
+    bool flag_need_recreate = !p_info->is_active;
+    if (p_info->is_active)
+    {
+        if (flag_connection_established)
+        {
+            flag_need_recreate = flag_need_recreate || p_info->is_connectable;
+        }
+        else
+        {
+            flag_need_recreate = flag_need_recreate || (p_info->params.is_connectable && (!p_info->is_connectable));
         }
     }
 
-    for (int i = 0; i < BLE_ADV_TYPE_NUM; i++)
+    if (flag_need_recreate)
+    {
+        const bool flag_connectable = (!flag_connection_established) && p_info->params.is_connectable;
+        if (!ble_adv_recreate(p_info, flag_connectable))
+        {
+            TLOG_ERR("ble_adv_recreate failed for Advertiser[%s]", p_info->name);
+            return false;
+        }
+    }
+    return true;
+}
+
+static size_t
+ble_adv_remove_complete_name_from_adv_data(const ble_adv_info_t* const p_info, const bool flag_connection_established)
+{
+    size_t ad_len = p_info->params.ad_len;
+    if (flag_connection_established && (NULL != p_info->params.ad) && (p_info->params.ad_len > 0))
+    {
+        // Remove Complete Local Name from advertising data if it's at the end
+        const bool has_complete_name = (BT_DATA_NAME_COMPLETE == p_info->params.ad[ad_len - 1].type);
+        if (has_complete_name)
+        {
+            ad_len -= 1;
+        }
+    }
+    return ad_len;
+}
+
+static void
+ble_adv_advertise_on_phy(ble_adv_info_t* const p_info, const bool flag_connection_established)
+{
+    if (!ble_adv_recreate_if_needed(p_info, flag_connection_established))
+    {
+        return;
+    }
+    const size_t     ad_len = ble_adv_remove_complete_name_from_adv_data(p_info, flag_connection_established);
+    zephyr_api_ret_t err    = bt_le_ext_adv_set_data(
+        p_info->p_adv,
+        p_info->params.ad,
+        ad_len,
+        p_info->params.sd,
+        p_info->params.sd_len);
+    if (0 != err)
+    {
+        TLOG_ERR("bt_le_ext_adv_set_data failed for Advertiser[%s], err %d", p_info->name, err);
+        return;
+    }
+    if (!p_info->is_active)
+    {
+        struct bt_le_ext_adv_start_param adv_start_param[1] = { BT_LE_EXT_ADV_START_PARAM_INIT(0, 0) };
+
+        TLOG_WRN("Start advertising for Advertiser[%s]", p_info->name);
+        err = bt_le_ext_adv_start(p_info->p_adv, adv_start_param);
+        if (0 != err)
+        {
+            TLOG_ERR("bt_le_ext_adv_start failed for Advertiser[%s], err %d", p_info->name, err);
+            return;
+        }
+        p_info->is_active = true;
+    }
+}
+
+static void
+advertise(__unused struct k_work* work)
+{
+    update_ble_adv_data(&g_measurement, g_measurement_cnt, g_ble_mac, g_ble_adv_flags);
+
+    const bool flag_connection_established = check_if_connection_established();
+
+    for (int32_t i = 0; i < BLE_ADV_TYPE_NUM; ++i)
     {
         ble_adv_info_t* const p_info = &g_ble_adv_info[i];
         if (!p_info->is_enabled)
         {
             continue;
         }
-        if ((!p_info->is_active) || (flag_connection_established && p_info->is_active && p_info->is_connectable)
-            || (!flag_connection_established && p_info->is_active && p_info->params.is_connectable
-                && !p_info->is_connectable))
-        {
-            const bool flag_connectable = (!flag_connection_established) && p_info->params.is_connectable;
-            if (!ble_adv_recreate(p_info, flag_connectable))
-            {
-                TLOG_ERR("ble_adv_recreate failed for Advertiser[%s]", p_info->name);
-                continue;
-            }
-        }
-        size_t ad_len = p_info->params.ad_len;
-        if (flag_connection_established && (NULL != p_info->params.ad) && (p_info->params.ad_len > 0))
-        {
-            if (BT_DATA_NAME_COMPLETE == p_info->params.ad[ad_len - 1].type)
-            {
-                ad_len -= 1;
-            }
-        }
-        int err = bt_le_ext_adv_set_data(
-            p_info->p_adv,
-            p_info->params.ad,
-            ad_len,
-            p_info->params.sd,
-            p_info->params.sd_len);
-        if (0 != err)
-        {
-            TLOG_ERR("bt_le_ext_adv_set_data failed for Advertiser[%s], err %d", p_info->name, err);
-            continue;
-        }
-        if (!p_info->is_active)
-        {
-            struct bt_le_ext_adv_start_param adv_start_param[1] = { BT_LE_EXT_ADV_START_PARAM_INIT(0, 0) };
-
-            TLOG_WRN("Start advertising for Advertiser[%s]", p_info->name);
-            err = bt_le_ext_adv_start(p_info->p_adv, adv_start_param);
-            if (0 != err)
-            {
-                TLOG_ERR("bt_le_ext_adv_start failed for Advertiser[%s], err %d", p_info->name, err);
-                continue;
-            }
-            p_info->is_active = true;
-        }
+        ble_adv_advertise_on_phy(p_info, flag_connection_established);
     }
 }
 
-void
-set_bluetooth_device_name(const uint32_t mac)
+static void
+set_bluetooth_device_name(const radio_mac_t mac)
 {
     (void)snprintf(
         g_bt_name,
         sizeof(g_bt_name),
         "%s %02X%02X",
         CONFIG_BT_DEVICE_NAME,
-        (uint8_t)((mac >> 8) & 0xFF),
-        (uint8_t)mac & 0xFF);
+        (uint8_t)((mac >> BYTE_SHIFT_1) & BYTE_MASK),
+        (uint8_t)mac & BYTE_MASK);
     TLOG_INF("BLE Device Name: %s", g_bt_name);
-    const int err = bt_set_name(g_bt_name);
+    const zephyr_api_ret_t err = bt_set_name(g_bt_name);
     if (0 != err)
     {
         TLOG_ERR("Failed to set Bluetooth name, err %d", err);
@@ -548,7 +619,7 @@ ble_adv_init(void)
     logger_backend_ble_set_hook(logger_hook, NULL);
 #endif
 
-    int err = bt_enable(NULL);
+    zephyr_api_ret_t err = bt_enable(NULL);
     if (0 != err)
     {
         TLOG_ERR("Bluetooth init failed (err %d)", err);

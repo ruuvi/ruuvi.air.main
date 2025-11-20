@@ -32,7 +32,7 @@ struct image_version g_fw_img_fw_ver;
 fw_image_hw_rev_t    g_fw_img_hw_rev;
 #endif // CONFIG_BOOTLOADER_MCUBOOT
 
-const int g_cfg_hw_rev =
+const int32_t g_cfg_hw_rev =
 #if defined(CONFIG_BOARD_RUUVI_RUUVIAIR_REV_1)
     1
 #elif defined(CONFIG_BOARD_RUUVI_RUUVIAIR_REV_2)
@@ -120,7 +120,8 @@ semver_move_build_before_extra(const char* const p_orig_ver, char* const p_out_b
         {
             return false;
         }
-        strcpy(p_out_buf, p_orig_ver);
+        strncpy(p_out_buf, p_orig_ver, out_buf_size - 1);
+        p_out_buf[out_buf_size - 1] = '\0';
     }
     return true;
 }

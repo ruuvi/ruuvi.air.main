@@ -44,7 +44,7 @@ static K_WORK_DELAYABLE_DEFINE(g_button_work_delayable_reboot, &button_workq_cb_
 static bool g_flag_switching_led_mode_in_progress;
 
 static void
-button_workq_cb_pressed(struct k_work* item)
+button_workq_cb_pressed(__unused struct k_work* item)
 {
     app_watchdog_feed();
     app_led_mutex_lock();
@@ -64,7 +64,7 @@ button_workq_cb_pressed(struct k_work* item)
 }
 
 static void
-button_workq_cb_released(struct k_work* item)
+button_workq_cb_released(__unused struct k_work* item)
 {
     app_watchdog_feed();
     app_led_mutex_lock();
@@ -77,26 +77,29 @@ button_workq_cb_released(struct k_work* item)
 }
 
 static void
-button_workq_cb_changed_led_mode(struct k_work* item)
+button_workq_cb_changed_led_mode(__unused struct k_work* item)
 {
     g_flag_switching_led_mode_in_progress = false;
 }
 
 static void
-button_workq_cb_timeout(struct k_work* item)
+button_workq_cb_timeout(__unused struct k_work* item)
 {
     LOG_WRN("Button %d ms timeout - rebooting...", CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT);
     k_work_reschedule(&g_button_work_delayable_reboot, K_MSEC(RUUVI_AIR_BUTTON_DELAY_FLUSH_LOGS_MS));
 }
 
 static void
-button_workq_cb_reboot(struct k_work* item)
+button_workq_cb_reboot(__unused struct k_work* item)
 {
     sys_reboot(SYS_REBOOT_COLD);
 }
 
 static void
-app_isr_cb_pinhole_button_pressed_or_released(const struct device* dev, struct gpio_callback* cb, uint32_t pins)
+app_isr_cb_pinhole_button_pressed_or_released(
+    __unused const struct device*  dev,
+    __unused struct gpio_callback* cb,
+    __unused uint32_t              pins)
 {
     if (app_button_get())
     {

@@ -7,6 +7,8 @@
 
 #include <stdint.h>
 
+#define PCF85263A_RTC_TICKS_PER_SEC (100U)
+
 /* PCF85263A device registers */
 #define PCF85263A_REG_100TH_SECONDS (0x00)
 #define PCF85263A_REG_SECONDS       (0x01)
@@ -32,10 +34,6 @@
 #define PCF85263A_REG_DAYS_MASK             GENMASK(5, 0)
 #define PCF85263A_REG_WEEKDAYS_MASK         GENMASK(2, 0)
 #define PCF85263A_REG_MONTHS_MASK           GENMASK(4, 0)
-
-#define PCF85263A_CALC_NUM_REGS(first_reg, last_reg)                                               \
-	(((last_reg) >= (first_reg)) ? ((last_reg) - (first_reg) + 1)                              \
-				     : ((last_reg) + PCF85263A_WRAP_AROUND_REG - (first_reg) + 1))
 
 #define PCF85263A_REG_PIN_IO_INTAPM_MASK    GENMASK(1, 0) /*  */
 #define PCF85263A_REG_PIN_IO_INTAPM_CLK     (0 << 0)      /*  */

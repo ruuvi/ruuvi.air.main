@@ -20,7 +20,8 @@ LOG_MODULE_REGISTER(spl_calc, LOG_LEVEL_INF);
 
 #define SPL_CALC_AVERAGING_PERIOD_SEC (60)
 
-#define MAX_Q15 (32767)
+#define MAX_Q15   (32767)
+#define MAX_Q15_F (32767.0f)
 
 typedef struct accum_rms_t
 {
@@ -78,7 +79,8 @@ static bool
 accum_rms_add(accum_rms_t* p_accum_rms, const float32_t sum_of_squares)
 {
     p_accum_rms->arr_sum_of_square[p_accum_rms->cnt] = sum_of_squares;
-    if (++p_accum_rms->cnt >= MIC_PDM_NUM_BLOCKS_PER_SECOND)
+    p_accum_rms->cnt += 1;
+    if (p_accum_rms->cnt >= MIC_PDM_NUM_BLOCKS_PER_SECOND)
     {
         p_accum_rms->cnt = 0;
         return true;
@@ -91,14 +93,14 @@ accum_rms_get_max(const accum_rms_t* const p_accum_rms)
 {
     assert(p_accum_rms->cnt == 0);
     float32_t max = 0;
-    for (uint32_t i = 0; i < MIC_PDM_NUM_BLOCKS_PER_SECOND; i++)
+    for (uint32_t i = 0; i < MIC_PDM_NUM_BLOCKS_PER_SECOND; ++i)
     {
         if (p_accum_rms->arr_sum_of_square[i] > max)
         {
             max = p_accum_rms->arr_sum_of_square[i];
         }
     }
-    return sqrtf(max / (float32_t)MIC_PDM_NUM_SAMPLES_IN_BLOCK) / MAX_Q15;
+    return sqrtf(max / (float32_t)MIC_PDM_NUM_SAMPLES_IN_BLOCK) / MAX_Q15_F;
 }
 
 static float32_t
@@ -106,11 +108,11 @@ accum_rms_get_avg(const accum_rms_t* const p_accum_rms)
 {
     assert(p_accum_rms->cnt == 0);
     float32_t sum = 0;
-    for (uint32_t i = 0; i < MIC_PDM_NUM_BLOCKS_PER_SECOND; i++)
+    for (uint32_t i = 0; i < MIC_PDM_NUM_BLOCKS_PER_SECOND; ++i)
     {
         sum += p_accum_rms->arr_sum_of_square[i];
     }
-    return sqrtf(sum / (float32_t)(MIC_PDM_NUM_SAMPLES_IN_BLOCK * MIC_PDM_NUM_BLOCKS_PER_SECOND)) / MAX_Q15;
+    return sqrtf(sum / (MIC_PDM_NUM_SAMPLES_IN_BLOCK * MIC_PDM_NUM_BLOCKS_PER_SECOND)) / MAX_Q15_F;
 }
 
 static q15_t
@@ -122,7 +124,8 @@ moving_window_mean_add(
     const q31_t sum_of_vals_in_buf = dsp_calc_sum_q15_q31(p_buffer, num_samples);
 
     p_moving_window_mean->arr_of_sums[p_moving_window_mean->idx] = sum_of_vals_in_buf;
-    if (++p_moving_window_mean->idx >= MIC_PDM_MEAN_MOVING_AVG_WINDOW_SIZE)
+    p_moving_window_mean->idx += 1;
+    if (p_moving_window_mean->idx >= MIC_PDM_MEAN_MOVING_AVG_WINDOW_SIZE)
     {
         p_moving_window_mean->idx = 0;
     }
@@ -130,19 +133,22 @@ moving_window_mean_add(
     {
         p_moving_window_mean->cnt += 1;
     }
+    assert(p_moving_window_mean->cnt > 0);
+    assert(p_moving_window_mean->cnt <= UINT16_MAX);
     q63_t sum = 0;
-    for (uint32_t i = 0; i < p_moving_window_mean->cnt; i++)
+    for (uint32_t i = 0; i < p_moving_window_mean->cnt; ++i)
     {
         sum += p_moving_window_mean->arr_of_sums[i];
     }
-    return (q15_t)(sum / (q63_t)(p_moving_window_mean->cnt * MIC_PDM_NUM_SAMPLES_IN_BLOCK));
+    return (q15_t)(sum / (p_moving_window_mean->cnt * MIC_PDM_NUM_SAMPLES_IN_BLOCK));
 }
 
 static void
 moving_window_rms_add(moving_window_rms_t* p_moving_window_rms, const float32_t rms)
 {
     p_moving_window_rms->arr_rms[p_moving_window_rms->idx] = rms;
-    if (++p_moving_window_rms->idx >= SPL_CALC_AVERAGING_PERIOD_SEC)
+    p_moving_window_rms->idx += 1;
+    if (p_moving_window_rms->idx >= SPL_CALC_AVERAGING_PERIOD_SEC)
     {
         p_moving_window_rms->idx = 0;
     }
@@ -162,8 +168,9 @@ moving_window_rms_get_max(const moving_window_rms_t* const p_moving_window_rms)
     {
         return NAN;
     }
-    while (cnt-- > 0)
+    while (cnt > 0)
     {
+        cnt -= 1;
         if (0 == idx)
         {
             idx = SPL_CALC_AVERAGING_PERIOD_SEC - 1;
@@ -190,8 +197,9 @@ moving_window_rms_get_avg(const moving_window_rms_t* const p_moving_window_rms)
     {
         return NAN;
     }
-    while (cnt-- > 0)
+    while (cnt > 0)
     {
+        cnt -= 1;
         if (0 == idx)
         {
             idx = SPL_CALC_AVERAGING_PERIOD_SEC - 1;
@@ -224,7 +232,7 @@ spl_calc_handle_buffer(q15_t* const p_buffer, float32_t* const p_buf_f32, const 
 {
     q15_t mean_val = moving_window_mean_add(&g_moving_mean, p_buffer, num_samples);
 
-    for (uint16_t i = 0; i < num_samples; i++)
+    for (uint16_t i = 0; i < num_samples; ++i)
     {
         p_buffer[i] -= mean_val;
     }
@@ -245,7 +253,7 @@ spl_calc_handle_buffer(q15_t* const p_buffer, float32_t* const p_buf_f32, const 
 #else
 #error "Unsupported sample rate"
 #endif
-    const float32_t sum_of_square_filtered = dsp_sum_of_square_f32(p_buf_f32, num_samples) * (MAX_Q15 * MAX_Q15);
+    const float32_t sum_of_square_filtered = dsp_sum_of_square_f32(p_buf_f32, num_samples) * (MAX_Q15_F * MAX_Q15_F);
     if (accum_rms_add(&g_accum_rms_filtered, sum_of_square_filtered))
     {
         const float32_t rms_filtered_avg = accum_rms_get_avg(&g_accum_rms_filtered);

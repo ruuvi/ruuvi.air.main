@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "arm_math.h"
+#include <zephyr/dsp/types.h>
 
 #ifdef __cplusplus
 extern "C" {

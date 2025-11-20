@@ -5,13 +5,18 @@
 #include "app_watchdog.h"
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/watchdog.h>
+#include "zephyr_api.h"
 #include "tlog.h"
 
 LOG_MODULE_REGISTER(wdog, LOG_LEVEL_INF);
 
+#if !defined(CONFIG_DEBUG)
+#define CONFIG_DEBUG (0)
+#endif
+
 #if IS_ENABLED(CONFIG_WATCHDOG) && DT_NODE_EXISTS(DT_ALIAS(watchdog0)) && DT_NODE_HAS_STATUS(DT_ALIAS(watchdog0), okay)
 static const struct device* g_wdt_dev = DEVICE_DT_GET(DT_ALIAS(watchdog0));
-static int                  g_wdt_channel;
+static int32_t              g_wdt_channel;
 #endif
 
 bool
@@ -26,13 +31,13 @@ app_watchdog_start(void)
     }
 
     struct wdt_timeout_cfg cfg = {
-		.window = {
-			.min = 0,
-			.max = CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT + 500,
-		},
-		.callback = NULL,
-		.flags = WDT_FLAG_RESET_SOC,
-	};
+        .window = {
+            .min = 0,
+            .max = CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT + 500,
+        },
+        .callback = NULL,
+        .flags = WDT_FLAG_RESET_SOC,
+    };
 
     g_wdt_channel = wdt_install_timeout(g_wdt_dev, &cfg);
     if (g_wdt_channel < 0)
@@ -41,7 +46,7 @@ app_watchdog_start(void)
         return false;
     }
 
-    int err = wdt_setup(g_wdt_dev, 0);
+    zephyr_api_ret_t err = wdt_setup(g_wdt_dev, 0);
     if (0 != err)
     {
         TLOG_ERR("wdt_setup failed: %d", err);
@@ -59,8 +64,8 @@ app_watchdog_feed(void)
 {
 #if !CONFIG_DEBUG && IS_ENABLED(CONFIG_WATCHDOG)
 #if DT_NODE_EXISTS(DT_ALIAS(watchdog0)) && DT_NODE_HAS_STATUS(DT_ALIAS(watchdog0), okay)
-    int err = wdt_feed(g_wdt_dev, g_wdt_channel);
-    if (err)
+    zephyr_api_ret_t err = wdt_feed(g_wdt_dev, g_wdt_channel);
+    if (0 != err)
     {
         TLOG_ERR("wdt_feed failed: %d", err);
     }

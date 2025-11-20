@@ -5,13 +5,14 @@
 #ifndef RUUVI_AIR_API_H
 #define RUUVI_AIR_API_H
 
+#include <zephyr/dsp/types.h>
 #include "sensors.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-float
+float32_t
 api_calc_air_quality_index(const sensors_measurement_t* const p_measurement);
 
 #ifdef __cplusplus
