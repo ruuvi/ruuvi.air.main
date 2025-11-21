@@ -96,6 +96,12 @@ app_settings_conv_deci_percent_to_brightness(
     const app_settings_led_brightness_deci_percent_t brightness_deci_percent,
     uint8_t* const                                   p_dim_pwm);
 
+bool
+app_settings_expose_serial_number(const bool flag_expose);
+
+void
+app_settings_reload(void);
+
 #ifdef __cplusplus
 }
 #endif

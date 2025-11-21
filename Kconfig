@@ -47,6 +47,12 @@ config RUUVI_AIR_LED_DIMMING_INTERVAL_MS
 	help
 	  LED dimming interval in milliseconds.
 
+config RUUVI_AIR_EXPOSE_SERIAL_NUMBER_TIMEOUT_SECS
+	int "Expose serial number timeout on button press (seconds)"
+	default 60
+	help
+	  Timeout for exposing the device serial number on button press.
+
 
 choice RUUVI_AIR_LED_MODE
     prompt "Configure LED mode"
