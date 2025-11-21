@@ -171,7 +171,6 @@ jobs:
             -e HOST_USER="$(id -un)" \
             -e HOST_GROUP="$(id -gn)" \
             -v "$HOME:$HOME" \
-            -v "$RUNNER_TEMP/signing_keys:$HOME/.signing_keys:ro" \
             -w $HOME \
             -e NCS_VERSION="${NCS_VERSION}" \
             -e PROJECT_DIR="${PROJECT_DIR}" \
@@ -184,6 +183,8 @@ jobs:
               echo ">>> Init dev env"
               source /usr/local/bin/dev-env-v2.8.0.sh
 
+              pwd
+              sleep 1
               cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
 
               ./scripts/clang_format_all.sh --check

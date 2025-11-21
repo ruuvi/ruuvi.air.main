@@ -321,6 +321,7 @@ jobs:
             cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/b0_hook
             sonar-scanner --debug \
               --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+              --define sonar.coverageReportPaths=../coverage.xml
           ) >/tmp/sonar-scan-ruuvi.air.b0.log 2>&1 &
           PID_B=$!
 
@@ -330,6 +331,7 @@ jobs:
             cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/mcuboot_hook
             sonar-scanner --debug \
               --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+              --define sonar.coverageReportPaths=../coverage.xml
           ) >/tmp/sonar-scan-ruuvi.air.mcuboot.log 2>&1 &
           PID_C=$!
 
@@ -339,6 +341,7 @@ jobs:
             cd $HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}/fw_loader
             sonar-scanner --debug \
               --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+              --define sonar.coverageReportPaths=../coverage.xml
           ) >/tmp/sonar-scan-ruuvi.air.fw_loader.log 2>&1 &
           PID_D=$!
 

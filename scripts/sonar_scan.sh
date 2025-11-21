@@ -64,16 +64,19 @@ else
   cd b0_hook
   sonar-scanner --debug \
     --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+    --define sonar.coverageReportPaths=../coverage.xml \
     --define sonar.cfamily.threads=$(nproc)
   rm -rf .scannerwork
   cd ../mcuboot_hook
   sonar-scanner --debug \
     --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+    --define sonar.coverageReportPaths=../coverage.xml \
     --define sonar.cfamily.threads=$(nproc)
   rm -rf .scannerwork
   cd ../fw_loader
   sonar-scanner --debug \
     --define sonar.cfamily.compile-commands=../build-sonar/bw-output/compile_commands.json \
+    --define sonar.coverageReportPaths=../coverage.xml \
     --define sonar.cfamily.threads=$(nproc)
   rm -rf .scannerwork
   cd ..
