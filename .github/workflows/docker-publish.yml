@@ -51,7 +51,7 @@ jobs:
             type=ref,event=branch
             # Add 'latest' for master only
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
-            # Tag with git tag on tag builds (e.g. v2.8.0)
+            # Tag with git tag on tag builds
             type=ref,event=tag
             # Always add immutable content-addressable tag
             type=sha
