@@ -5,7 +5,7 @@
 #
 # --------------------------------------------------------------------
 # Thin base with all system deps only.
-# NCS installation is deferred to /root/install_ncs_v2.8.0.sh (run at CI time).
+# NCS installation is deferred to /root/install_ncs_v2.9.2.sh (run at CI time).
 # $HOME/.nrfutil and $HOME/ncs are volume-mounted from GitHub Action and cached between runs.
 # --------------------------------------------------------------------
 
@@ -14,7 +14,7 @@ FROM ubuntu:24.04
 LABEL org.opencontainers.image.source="https://github.com/ruuvi/ruuvi.air.main"
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV NCS_VERSION=v2.8.0
+ENV NCS_VERSION=v2.9.2
 
 # Core build + Zephyr/NCS deps + tools used in workflows (no nrfutil here)
 RUN bash -euo pipefail <<'BASH'
@@ -219,7 +219,7 @@ BASH
 
 
 # --------------------------------------------------------------------
-# Create the installer script: /usr/local/bin/install_ncs_v2.8.0.sh
+# Create the installer script: /usr/local/bin/install_ncs_v2.9.2.sh
 # This script installs nrfutil + Toolchain Manager, then installs NCS
 # for $NCS_VERSION and runs west init/update/zephyr-export.
 # It is idempotent and safe to re-run.
@@ -227,13 +227,13 @@ BASH
 RUN bash -euo pipefail <<'BASH'
 set -euo pipefail
 
-# ------ Create installer script: /usr/local/bin/install_ncs_v2.8.0.sh ------
-cat >/usr/local/bin/install_ncs_v2.8.0.sh <<'EOSH'
+# ------ Create installer script: /usr/local/bin/install_ncs_v2.9.2.sh ------
+cat >/usr/local/bin/install_ncs_v2.9.2.sh <<'EOSH'
 #!/usr/bin/env bash
 set -xeuo pipefail
 
 # Default and sanity
-: "${NCS_VERSION:=v2.8.0}"
+: "${NCS_VERSION:=v2.9.2}"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH-}"
 
 echo ">>> NCS_VERSION=${NCS_VERSION}"
@@ -296,14 +296,14 @@ fi
 echo ">>> Done. Zephyr base should be at: /root/ncs/${NCS_VERSION}/zephyr"
 EOSH
 
-chmod +x /usr/local/bin/install_ncs_v2.8.0.sh
-echo "Created /usr/local/bin/install_ncs_v2.8.0.sh"
+chmod +x /usr/local/bin/install_ncs_v2.9.2.sh
+echo "Created /usr/local/bin/install_ncs_v2.9.2.sh"
 
-# ------ Create dev-env script: /usr/local/bin/dev-env-v2.8.0.sh ------
-cat >/usr/local/bin/dev-env-v2.8.0.sh <<'EOSH'
+# ------ Create dev-env script: /usr/local/bin/dev-env-v2.9.2.sh ------
+cat >/usr/local/bin/dev-env-v2.9.2.sh <<'EOSH'
 #!/usr/bin/env bash
-# dev-env-v2.8.0.sh — set up Zephyr + nRF toolchain
-# exec: source dev-env-v2.8.0.sh
+# dev-env-v2.9.2.sh — set up Zephyr + nRF toolchain
+# exec: source dev-env-v2.9.2.sh
 
 set -xeuo pipefail
 
@@ -318,8 +318,8 @@ echo ">>> Done. Zephyr base should be at: $HOME/ncs/${NCS_VERSION}/zephyr"
 
 EOSH
 
-chmod +x /usr/local/bin/dev-env-v2.8.0.sh
-echo "Created /usr/local/bin/dev-env-v2.8.0.sh"
+chmod +x /usr/local/bin/dev-env-v2.9.2.sh
+echo "Created /usr/local/bin/dev-env-v2.9.2.sh"
 
 BASH
 
