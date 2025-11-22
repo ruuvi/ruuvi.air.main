@@ -8,6 +8,6 @@ manifest:
     - name: sdk-nrf
       remote: nrf
       path: nrf
-      revision: v2.8.0
+      revision: v2.9.2
       import: true
       clone-depth: 1
