@@ -7,8 +7,8 @@ set -xeuo pipefail
 
 PRJ_ABS_PATH=$(realpath "$PWD")
 
-TAG="v2.8.0"
-IMAGE="ruuvi-air-ci:${TAG}"
+NCS_VERSION="v2.9.2"
+IMAGE="ruuvi-air-ci:${NCS_VERSION}"
 
 # Create a fingerprint of the Dockerfile and build context
 HASH=$(find Dockerfile . -type f -maxdepth 1 -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12)
@@ -54,7 +54,6 @@ rm -rf twister-out || true
 rm -f coverage.xml || true
 
 PROJECT_DIR=$(basename "$PWD")
-NCS_VERSION="v2.8.0"
 KEYS_DIR="$HOME/.signing_keys"
 NCS_DOCKER_DIR="$HOME/ncs_docker"
 USERNAME="$(id -un)"
@@ -104,8 +103,8 @@ docker run --rm -it \
     which build-wrapper-linux-x86-64
     which sonar-scanner
 
-    install_ncs_v2.8.0.sh
-    source /usr/local/bin/dev-env-v2.8.0.sh
+    install_ncs_${NCS_VERSION}.sh
+    source /usr/local/bin/dev-env-${NCS_VERSION}.sh
 
     cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
 

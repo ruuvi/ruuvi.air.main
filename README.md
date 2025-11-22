@@ -70,27 +70,28 @@ Download [nRF Util](https://www.nordicsemi.com/Products/Development-tools/nrf-ut
 ```bash
 chmod +x nrfutil
 sudo mv nrfutil /usr/local/bin/
+nrfutil upgrade
 nrfutil install nrf5sdk-tools
 nrfutil install device
 nrfutil install completion
 nrfutil completion install bash
 nrfutil install toolchain-manager
 nrfutil toolchain-manager search
-nrfutil toolchain-manager install --ncs-version v2.8.0
+nrfutil toolchain-manager install --ncs-version v2.9.2
 ```
 Get nRF Connect SDK (this will clone [sdk-nrf](https://github.com/nrfconnect/sdk-nrf) into `nrf`)
 ```bash
 cd ~/ncs
-nrfutil toolchain-manager launch --shell
-west init -m https://github.com/nrfconnect/sdk-nrf --mr v2.8.0 v2.8.0
-cd ~/ncs/v2.8.0
+nrfutil toolchain-manager launch --ncs-version v2.9.2 --shell
+west init -m https://github.com/nrfconnect/sdk-nrf --mr v2.9.2 v2.9.2
+cd ~/ncs/v2.9.2
 west update
 west zephyr-export
 ```
 
 ## Clone this repository
 ```bash
-cd ~/ncs/v2.8.0
+cd ~/ncs/v2.9.2
 git clone --recurse-submodules --remote-submodules https://github.com/ruuvi/ruuvi.air.main.git
 ```
 
@@ -352,7 +353,7 @@ openssl ec -in priv.pem -pubout -out public.pem
 
 ### Generating development signature keys
 ```bash
-cd ~/ncs/v2.8.0
+cd ~/ncs/v2.9.2
 mkdir -p ~/.signing_keys
 python3 bootloader/mcuboot/scripts/imgtool.py keygen -t ecdsa-p256 -k ~/.signing_keys/b0_sign_key_private-dev.pem
 python3 bootloader/mcuboot/scripts/imgtool.py keygen -t ecdsa-p256 -k ~/.signing_keys/image_sign-dev.pem
@@ -360,7 +361,7 @@ python3 bootloader/mcuboot/scripts/imgtool.py keygen -t ecdsa-p256 -k ~/.signing
 
 ### Generating production signature keys
 ```bash
-cd ~/ncs/v2.8.0
+cd ~/ncs/v2.9.2
 mkdir -p ~/.signing_keys
 python3 bootloader/mcuboot/scripts/imgtool.py keygen -t ecdsa-p256 -k ~/.signing_keys/b0_sign_key_private-prod.pem
 python3 bootloader/mcuboot/scripts/imgtool.py getpub -k ~/.signing_keys/b0_sign_key_private-prod.pem -e pem -o ~/.signing_keys/b0_sign_key_public-prod.pem
