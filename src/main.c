@@ -62,7 +62,8 @@ typedef enum app_event_type_e
     APP_EVENT_TYPE_POLL_SENSORS       = 1 << 0,
     APP_EVENT_TYPE_MEASURE_LUMINOSITY = 1 << 1,
     APP_EVENT_TYPE_REFRESH_LED        = 1 << 2,
-    APP_EVENT_TYPE_REBOOT             = 1 << 3,
+    APP_EVENT_TYPE_RELOAD_SETTINGS    = 1 << 3,
+    APP_EVENT_TYPE_REBOOT             = 1 << 4,
 } app_event_type_e;
 
 static void
@@ -148,6 +149,13 @@ app_post_event_refresh_led(void)
 {
     TLOG_INF("Post event refresh_led");
     k_event_post(&main_event, APP_EVENT_TYPE_REFRESH_LED);
+}
+
+void
+app_post_event_reload_settings(void)
+{
+    TLOG_INF("Post event reload settings");
+    k_event_post(&main_event, APP_EVENT_TYPE_RELOAD_SETTINGS);
 }
 
 #if IS_ENABLED(CONFIG_BT_CTLR_ASSERT_HANDLER)
@@ -513,7 +521,7 @@ main(void)
         const uint32_t events = k_event_wait(
             &main_event,
             APP_EVENT_TYPE_POLL_SENSORS | APP_EVENT_TYPE_MEASURE_LUMINOSITY | APP_EVENT_TYPE_REFRESH_LED
-                | APP_EVENT_TYPE_REBOOT,
+                | APP_EVENT_TYPE_RELOAD_SETTINGS | APP_EVENT_TYPE_REBOOT,
             false,
             K_FOREVER);
         k_event_clear(&main_event, events);
@@ -532,6 +540,10 @@ main(void)
         if (0 != (events & APP_EVENT_TYPE_REFRESH_LED))
         {
             aqi_refresh_led();
+        }
+        if (0 != (events & APP_EVENT_TYPE_RELOAD_SETTINGS))
+        {
+            app_settings_reload();
         }
         if (0 != (events & APP_EVENT_TYPE_REBOOT))
         {

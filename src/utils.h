@@ -27,6 +27,9 @@ set_clock(const uint32_t unixtime, const bool flag_print_log);
 void
 app_post_event_refresh_led(void);
 
+void
+app_post_event_reload_settings(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -15,6 +15,7 @@
 #include "app_led.h"
 #include "utils.h"
 #include "app_watchdog.h"
+#include "tlog.h"
 
 LOG_MODULE_DECLARE(GPIO, LOG_LEVEL_INF);
 
@@ -34,12 +35,15 @@ static void
 button_workq_cb_reboot(struct k_work* item);
 static void
 button_workq_cb_changed_led_mode(struct k_work* item);
+static void
+button_workq_cb_hide_serial_number(struct k_work* item);
 
 static K_WORK_DEFINE(g_button_work_pressed, &button_workq_cb_pressed);
 static K_WORK_DEFINE(g_button_work_released, &button_workq_cb_released);
 static K_WORK_DELAYABLE_DEFINE(g_button_work_delayable_timeout, &button_workq_cb_timeout);
 static K_WORK_DELAYABLE_DEFINE(g_button_work_delayable_changed_led_mode, &button_workq_cb_changed_led_mode);
 static K_WORK_DELAYABLE_DEFINE(g_button_work_delayable_reboot, &button_workq_cb_reboot);
+static K_WORK_DELAYABLE_DEFINE(g_button_work_delayable_hide_serial_number, &button_workq_cb_hide_serial_number);
 
 static bool g_flag_switching_led_mode_in_progress;
 
@@ -60,7 +64,18 @@ button_workq_cb_pressed(__unused struct k_work* item)
         app_post_event_refresh_led();
         k_work_reschedule(&g_button_work_delayable_changed_led_mode, K_MSEC(CONFIG_RUUVI_AIR_LED_DIMMING_INTERVAL_MS));
     }
-    LOG_WRN("Button pressed");
+    TLOG_WRN("Button pressed");
+    if (app_settings_expose_serial_number(true))
+    {
+        app_post_event_reload_settings();
+    }
+    else
+    {
+        TLOG_INF("Serial number already exposed");
+    }
+    k_work_reschedule(
+        &g_button_work_delayable_hide_serial_number,
+        K_SECONDS(CONFIG_RUUVI_AIR_EXPOSE_SERIAL_NUMBER_TIMEOUT_SECS));
 }
 
 static void
@@ -73,7 +88,7 @@ button_workq_cb_released(__unused struct k_work* item)
     app_button_clr_pressed();
     app_led_mutex_unlock();
     k_work_cancel_delayable(&g_button_work_delayable_timeout);
-    LOG_WRN("Button released");
+    TLOG_WRN("Button released");
 }
 
 static void
@@ -85,7 +100,7 @@ button_workq_cb_changed_led_mode(__unused struct k_work* item)
 static void
 button_workq_cb_timeout(__unused struct k_work* item)
 {
-    LOG_WRN("Button %d ms timeout - rebooting...", CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT);
+    TLOG_WRN("Button %d ms timeout - rebooting...", CONFIG_RUUVI_AIR_BUTTON_DELAY_BEFORE_REBOOT);
     k_work_reschedule(&g_button_work_delayable_reboot, K_MSEC(RUUVI_AIR_BUTTON_DELAY_FLUSH_LOGS_MS));
 }
 
@@ -93,6 +108,15 @@ static void
 button_workq_cb_reboot(__unused struct k_work* item)
 {
     sys_reboot(SYS_REBOOT_COLD);
+}
+
+static void
+button_workq_cb_hide_serial_number(__unused struct k_work* item)
+{
+    if (app_settings_expose_serial_number(false))
+    {
+        app_post_event_reload_settings();
+    }
 }
 
 static void

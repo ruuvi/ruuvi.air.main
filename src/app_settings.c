@@ -373,11 +373,7 @@ app_settings_init(void)
     if (flag_reload_settings)
     {
         // Reload settings to update in-memory values for BLE subsystem.
-        err = settings_load();
-        if (0 != err)
-        {
-            TLOG_ERR("Settings loading failed: %d", err);
-        }
+        app_settings_reload();
     }
 #endif
     return true;
@@ -936,4 +932,45 @@ app_settings_get_sen66_voc_algorithm_state_timestamp(void)
     const uint32_t unix_timestamp = g_sen66_voc_algorithm_state.unix_timestamp;
     k_mutex_unlock(&g_sen66_voc_algorithm_state_mutex);
     return unix_timestamp;
+}
+
+bool
+app_settings_expose_serial_number(const bool flag_expose)
+{
+    if (flag_expose == g_flag_config_mode)
+    {
+        return false;
+    }
+    g_flag_config_mode                  = flag_expose;
+    const device_id_str_t device_id_str = get_device_id_str();
+    if (flag_expose)
+    {
+        TLOG_INF("Expose device serial number: %s", device_id_str.serial_number);
+    }
+    else
+    {
+        TLOG_INF("Hide device serial number: %s", device_id_str.serial_number);
+    }
+#if defined(CONFIG_BT_DIS_SERIAL_NUMBER)
+    app_settings_save_key(
+        APP_SETTINGS_FULL_KEY_BT_DIS_SERIAL,
+        device_id_str.serial_number,
+        strlen(device_id_str.serial_number) + 1);
+#endif
+    return true;
+}
+
+void
+app_settings_reload(void)
+{
+    // Reload settings to update in-memory values for BLE subsystem.
+    zephyr_api_ret_t err = settings_load();
+    if (0 != err)
+    {
+        TLOG_ERR("Settings loading failed: %d", err);
+    }
+    else
+    {
+        TLOG_INF("Settings reloaded successfully");
+    }
 }
