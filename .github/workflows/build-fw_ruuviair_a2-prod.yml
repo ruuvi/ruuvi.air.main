@@ -6,7 +6,7 @@ on:
     tags: [ '*' ]
 
 env:
-  NCS_VERSION: v2.8.0
+  NCS_VERSION: v2.9.2
   PROJECT_DIR: ruuvi.air
   SCRIPT_NAME: build_ruuviair_a2_release-prod
 
@@ -18,7 +18,7 @@ jobs:
 
     strategy:
       matrix:
-        image_tag: [ latest ]   # or pin: v2.8.0
+        image_tag: [ latest ]
 
     defaults:
       run:
@@ -103,8 +103,8 @@ jobs:
               set -xeuo pipefail
               export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 
-              install_ncs_v2.8.0.sh
-              source /usr/local/bin/dev-env-v2.8.0.sh
+              install_ncs_${NCS_VERSION}.sh
+              source /usr/local/bin/dev-env-${NCS_VERSION}.sh
 
               which nrfutil
               nrfutil --version || true
@@ -203,7 +203,7 @@ jobs:
               export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 
               echo ">>> Init dev env"
-              source /usr/local/bin/dev-env-v2.8.0.sh
+              source /usr/local/bin/dev-env-${NCS_VERSION}.sh
 
               cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
 

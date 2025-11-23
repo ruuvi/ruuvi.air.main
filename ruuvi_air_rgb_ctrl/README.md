@@ -8,12 +8,12 @@ The application provides controls to scan for nearby RuuviAir devices, establish
 
   * **Python 3.10** or newer.
   * A **RuuviAir** device with firmware that supports the RGB LED control via the MCUMgr shell.
-  * A computer with a **Bluetooth adapter** compatible with your operating system or 
+  * A computer with a **Bluetooth adapter** compatible with your operating system or
     **nRF52840-DK** or **nRF52840-dongle** with `hci_usb` firmware.
 
 ### Using `hci_usb` Firmware
 
-Pre-built firmware for the nRF52840-DK and nRF52840-dongle are automatically built and 
+Pre-built firmware for the nRF52840-DK and nRF52840-dongle are automatically built and
 included in the `firmware` directory of this repository.
 
 #### Flashing `hci_usb` Firmware for nRF52840-DK
@@ -41,13 +41,13 @@ nrfutil device program --firmware firmware//hci_usb_nrf52840dongle.zip --traits 
 #### Building `hci_usb` Firmware for nRF52840-DK
 If you need to build the `hci_usb` firmware yourself, follow these steps:
 ```shell
-cd ~/ncs/v2.8.0/zephyr/samples/bluetooth/hci_usb
+cd ~/ncs/2.9.2/zephyr/samples/bluetooth/hci_usb
 west build -b nrf52840dk/nrf52840 -d build_nrf52840dk .
 ```
 
 #### Workaround for the problem with `hci_usb` firmware on Ubuntu Linux
-If you encounter issues with the `hci_usb` firmware on Ubuntu Linux, 
-which manifests itself as the error message: "Error: can't scan: Invalid HCI Command Parameters" 
+If you encounter issues with the `hci_usb` firmware on Ubuntu Linux,
+which manifests itself as the error message: "Error: can't scan: Invalid HCI Command Parameters"
 when trying to scan for devices,
 you may need to use the following workaround:
 ```shell
@@ -58,7 +58,7 @@ The solution is described here: [Unable to use mcumgr cli over ble from linux(de
 #### Building `hci_usb` Firmware for nRF52840-dongle
 If you need to build the `hci_usb` firmware yourself, follow these steps:
 ```shell
-cd ~/ncs/v2.8.0/zephyr/samples/bluetooth/hci_usb
+cd ~/ncs/v2.9.2/zephyr/samples/bluetooth/hci_usb
 west build -b nrf52840dongle/nrf52840 -d build_nrf52840dongle .
 nrfutil pkg generate --hw-version 52 --sd-req=0x00 \
         --application build_nrf52840dongle/hci_usb/zephyr/zephyr.hex \
@@ -67,12 +67,12 @@ nrfutil pkg generate --hw-version 52 --sd-req=0x00 \
 
 ## Setup & Running the Application
 
-This project includes convenient scripts to automate the setup of a Python virtual environment and 
+This project includes convenient scripts to automate the setup of a Python virtual environment and
 the installation of required packages.
 
 ### On Windows
 
-1.  Ensure all project files (`ruuvi_air_rgb_ctrl.py`, `ruuvi_air_rgb_ctrl.bat`, `requirements.txt`) are 
+1.  Ensure all project files (`ruuvi_air_rgb_ctrl.py`, `ruuvi_air_rgb_ctrl.bat`, `requirements.txt`) are
     in the same directory.
 2.  Simply double-click the **`ruuvi_air_rgb_ctrl.bat`** file.
 
@@ -84,7 +84,7 @@ The script will automatically:
 
 ### On Linux / macOS
 
-1.  Ensure all project files (`ruuvi_air_rgb_ctrl.py`, `ruuvi_air_rgb_ctrl.sh`, `requirements.txt`) are 
+1.  Ensure all project files (`ruuvi_air_rgb_ctrl.py`, `ruuvi_air_rgb_ctrl.sh`, `requirements.txt`) are
     in the same directory.
 2.  Open a terminal in that directory.
 3.  Make the script executable by running the following command once:

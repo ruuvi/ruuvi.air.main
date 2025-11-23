@@ -16,7 +16,7 @@ extern "C" {
 #if defined(CONFIG_BOOTLOADER_MCUBOOT) || defined(CONFIG_MCUBOOT)
 
 /* Image trailer TLV types are defined in
-   ncs/v2.8.0/bootloader/mcuboot/boot/bootutil/include/bootutil/image.h
+   ncs/<VERSION>/bootloader/mcuboot/boot/bootutil/include/bootutil/image.h
 
     xxA0-xxFF are vendor specific TLV types.
 */
