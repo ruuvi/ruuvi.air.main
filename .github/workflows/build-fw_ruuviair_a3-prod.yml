@@ -1,4 +1,4 @@
-name: Build firmware (dev) for RuuviAir-A3
+name: Build firmware (prod) for RuuviAir-A3
 
 on:
   push:
