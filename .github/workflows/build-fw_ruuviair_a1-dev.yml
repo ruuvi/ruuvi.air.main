@@ -18,6 +18,8 @@ jobs:
     name: Build firmware (dev) for RuuviAir-A1
     environment: dev
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # required to create GitHub Releases and upload assets
 
     strategy:
       matrix:
@@ -152,6 +154,19 @@ jobs:
           fetch-depth: 0
           submodules: true
 
+      - name: Verify tag is on master (for release)
+        id: master_check
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          git fetch --no-tags origin master
+          if git merge-base --is-ancestor HEAD origin/master; then
+            echo "tag_on_master=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_on_master=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Prepare signing keys (host side; will be mounted read-only)
         env:
           B0_SIGN_KEY_PRIVATE: ${{ secrets.B0_SIGN_KEY_PRIVATE }}
@@ -221,16 +236,84 @@ jobs:
 
           mv "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}" "$GITHUB_WORKSPACE/${PROJECT_DIR}"
 
-      - name: Upload artifact ${{ env.SCRIPT_NAME }}
+      - name: Cleanup signing keys
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/signing_keys"
+
+      - name: Create zip
+        id: create_zip
+        env:
+          TAG: ${{ github.ref_name }}
+          TAG_ON_MASTER: ${{ steps.master_check.outputs.tag_on_master }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${TAG_ON_MASTER:-false}" == "true" ]]; then
+            ARTIFACT_NAME="${{ env.BUILD_DIR_NAME }}_${TAG}"
+          else
+            ARTIFACT_NAME="${{ env.BUILD_DIR_NAME }}"
+          fi
+
+          # Create directory "$ARTIFACT_NAME" for artifacts and copy files there
+
+          SRC="${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}"
+          DST="$ARTIFACT_NAME/${{ env.BUILD_DIR_NAME }}"
+
+          paths=(
+            "merged.hex"
+            "merged.ext_flash.hex"
+            "b0_container.hex"
+            "app_provision.hex"
+            "signed_by_mcuboot_and_b0_mcuboot.bin"
+            "signed_by_mcuboot_and_b0_mcuboot.hex"
+            "signed_by_mcuboot_and_b0_s1_image.bin"
+            "signed_by_mcuboot_and_b0_s1_image.hex"
+            "firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin"
+            "firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
+            "${{ env.PROJECT_DIR }}/zephyr/ruuvi_air_fw.signed.bin"
+            "${{ env.PROJECT_DIR }}/zephyr/ruuvi_air_fw.signed.hex"
+          )
+
+          for rel in "${paths[@]}"; do
+            src_path="$SRC/$rel"
+            dst_path="$DST/$rel"
+            mkdir -p "$(dirname "$dst_path")"
+            cp "$src_path" "$dst_path"
+          done
+          cp ${{ env.PROJECT_DIR }}/nrfjprog_cfg_ruuviair.toml "$ARTIFACT_NAME/nrfjprog_cfg_ruuviair.toml"
+
+          # Create zip file to upload as release asset
+          zip -r -q "$ARTIFACT_NAME.zip" "$ARTIFACT_NAME"
+
+          echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Create release and upload asset
+        if: startsWith(github.ref, 'refs/tags/') && steps.master_check.outputs.tag_on_master == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          ARTIFACT_NAME: ${{ steps.create_zip.outputs.artifact_name }}
+        shell: bash
+        run: |
+          set -e
+          command -v gh >/dev/null 2>&1 || { echo "gh CLI not found"; exit 1; }
+          # create if missing; on failure re-check to tolerate races
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            if ! gh release create "$TAG" --title "$TAG" --notes "Automated release" --prerelease; then
+              echo "Create failed; rechecking..."
+              if ! gh release view "$TAG" >/dev/null 2>&1; then
+                echo "Release still missing; aborting."
+                exit 1
+              fi
+            fi
+          fi
+          gh release upload "$TAG" "$ARTIFACT_NAME.zip" --clobber
+
+      - name: Upload artifact ${{ steps.create_zip.outputs.artifact_name }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.SCRIPT_NAME }}
-          path: |
-            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/merged.hex
-            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/merged.ext_flash.hex
-            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/b0_container.hex
-            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/signed_by_mcuboot_and_b0_mcuboot.bin
-            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/signed_by_mcuboot_and_b0_s1_image.bin
-            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin
-            ${{ env.PROJECT_DIR }}/${{ env.BUILD_DIR_NAME }}/${{ env.PROJECT_DIR }}/zephyr/ruuvi_air_fw.signed.bin
-            ${{ env.PROJECT_DIR }}/nrfjprog_cfg_ruuviair.toml
+          # Use a name without .zip; GitHub adds .zip on download if the name ends with .zip
+          name: ${{ steps.create_zip.outputs.artifact_name }}
+          # Upload whole directory with build artifacts
+          path: ${{ steps.create_zip.outputs.artifact_name }}
