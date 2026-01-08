@@ -9,6 +9,8 @@ set -x -e # Print commands and their arguments and Exit immediately if a command
 
 CUR_DIR_NAME=$(basename "$PWD")
 
+die() { echo "Error: $*" >&2; exit 1; }
+
 # Ensure that ZEPHYR_BASE is set
 if [ -z "$ZEPHYR_BASE" ]; then
   echo "Error: ZEPHYR_BASE is not set. Please set it to the Zephyr base directory." >&2
@@ -344,8 +346,10 @@ get_extra_ver() {
 
 if [ "$flag_prod" = true ]; then
   extra_ver_suffix=""
+  build_mode_suffix="prod"
 else
   extra_ver_suffix="dev"
+  build_mode_suffix="dev"
 fi
 
 
@@ -537,6 +541,101 @@ fi
 
 RUUVI_AIR_BUILD_DIR="$BUILD_DIR/$CUR_DIR_NAME/zephyr"
 
+VERSIONS_FILE="./BUILD_VERSIONS"
+# Extract versions safely (require vX.Y.Z format)
+B0_VER=$(grep -E '^\s*b0\s*=\s*v[0-9]+\.[0-9]+\.[0-9]+\s*$' "$VERSIONS_FILE" | sed -E 's/.*=\s*(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
+MCUBOOT_VER=$(grep -E '^\s*mcuboot\s*=\s*v[0-9]+\.[0-9]+\.[0-9]+\s*$' "$VERSIONS_FILE" | sed -E 's/.*=\s*(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
+FWLOADER_VER=$(grep -E '^\s*fwloader\s*=\s*v[0-9]+\.[0-9]+\.[0-9]+\s*$' "$VERSIONS_FILE" | sed -E 's/.*=\s*(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
+
+B0_RELEASE_DIR="./b0_release"
+RELEASES_DIR="./.releases"
+
+BASE_URL="https://github.com/ruuvi/ruuvi.air.main/releases/download"
+
+mkdir -p "$RELEASES_DIR"
+if [[ -n "${B0_VER}" ]]; then
+  B0_TAG="b0_${B0_VER}"
+  archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${B0_TAG}"
+  archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
+  archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
+
+  BUILD_PATH_B0_CONTAINER_HEX="${archive_subfolder_path}/b0_container.hex"
+  BUILD_PATH_B0_APP_PROVISION_HEX="${archive_subfolder_path}/app_provision.hex"
+
+  if [[ ! -d "${archive_subfolder_path}" || \
+        ! -f "${BUILD_PATH_B0_CONTAINER_HEX}" || \
+        ! -f "${BUILD_PATH_B0_APP_PROVISION_HEX}" ]]; then
+    if [[ -d "${B0_RELEASE_DIR}/${B0_VER}" ]]; then
+      mkdir -p "${archive_subfolder_path}"
+      srec_cat "${B0_RELEASE_DIR}/${B0_VER}/ruuviair_hw2_release-${build_mode_suffix}/merged.hex" \
+          -intel -crop 0x0 0xD000 -o "${BUILD_PATH_B0_CONTAINER_HEX}" -intel
+      srec_cat "${B0_RELEASE_DIR}/${B0_VER}/ruuviair_hw2_release-${build_mode_suffix}/merged.hex" \
+          -intel -crop 0xD000 0xE000 -o "${BUILD_PATH_B0_APP_PROVISION_HEX}" -intel
+    else
+      url="$BASE_URL/${B0_TAG}/${archive_name}.zip"
+      env -u LD_LIBRARY_PATH -u LD_PRELOAD curl -fL --retry 3 --retry-delay 2 -o "${RELEASES_DIR}/${archive_name}.zip" "$url" || die "Failed to download $url"
+      unzip -o "${RELEASES_DIR}/${archive_name}.zip" -d "${RELEASES_DIR}/${archive_name}"
+      if [[ ! -f "${BUILD_PATH_B0_APP_PROVISION_HEX}" ]]; then
+        srec_cat "${archive_subfolder_path}/merged.hex" \
+            -intel -crop 0xD000 0xE000 -o "${BUILD_PATH_B0_APP_PROVISION_HEX}" -intel
+      fi
+    fi
+  fi
+else
+  BUILD_PATH_B0_CONTAINER_HEX="$BUILD_DIR/b0_container.hex"
+  BUILD_PATH_B0_APP_PROVISION_HEX="$BUILD_DIR/app_provision.hex"
+fi
+
+if [[ -n "${MCUBOOT_VER}" ]]; then
+  MCUBOOT_TAG="mcuboot_${MCUBOOT_VER}"
+  archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${MCUBOOT_TAG}"
+  archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
+  archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
+
+  BUILD_PATH_MCUBOOT0_HEX="${archive_subfolder_path}/signed_by_mcuboot_and_b0_mcuboot.hex"
+  BUILD_PATH_MCUBOOT1_HEX="${archive_subfolder_path}/signed_by_mcuboot_and_b0_s1_image.hex"
+
+  if [[ ! -d "${archive_subfolder_path}" || \
+        ! -f "${BUILD_PATH_MCUBOOT0_HEX}" || \
+        ! -f "${BUILD_PATH_MCUBOOT1_HEX}" ]]; then
+    url="$BASE_URL/${MCUBOOT_TAG}/${archive_name}.zip"
+    env -u LD_LIBRARY_PATH -u LD_PRELOAD curl -fL --retry 3 --retry-delay 2 -o "${RELEASES_DIR}/${archive_name}.zip" "$url" || die "Failed to download $url"
+    unzip -o "${RELEASES_DIR}/${archive_name}.zip" -d "${RELEASES_DIR}/${archive_name}"
+    if [[ ! -f "${BUILD_PATH_MCUBOOT0_HEX}" ]]; then
+      srec_cat "${archive_subfolder_path}/merged.hex" \
+          -intel -crop 0xE000 0x27000 -o "${BUILD_PATH_MCUBOOT0_HEX}" -intel
+    fi
+    if [[ ! -f "${BUILD_PATH_MCUBOOT1_HEX}" ]]; then
+      srec_cat "${archive_subfolder_path}/merged.hex" \
+          -intel -crop 0x27000 0x40000 -o "${BUILD_PATH_MCUBOOT1_HEX}" -intel
+    fi
+  fi
+else
+  BUILD_PATH_MCUBOOT0_HEX="$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex"
+  BUILD_PATH_MCUBOOT1_HEX="$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex"
+fi
+
+if [[ -n "${FWLOADER_VER}" ]]; then
+  FWLOADER_TAG="fwloader_${FWLOADER_VER}"
+  archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${FWLOADER_TAG}"
+  archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
+  archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
+
+  BUILD_PATH_FWLOADER_HEX="${archive_subfolder_path}/ruuvi_air_fw_loader.signed.hex"
+
+  if [[ ! -d "${archive_subfolder_path}" || \
+        ! -f "${BUILD_PATH_FWLOADER_HEX}" ]]; then
+    url="$BASE_URL/${FWLOADER_TAG}/${archive_name}.zip"
+    env -u LD_LIBRARY_PATH -u LD_PRELOAD curl -fL --retry 3 --retry-delay 2 -o "${RELEASES_DIR}/${archive_name}.zip" "$url" || die "Failed to download $url"
+    unzip -o "${RELEASES_DIR}/${archive_name}.zip" -d "${RELEASES_DIR}/${archive_name}"
+    if [[ ! -f "${BUILD_PATH_FWLOADER_HEX}" ]]; then
+      srec_cat "${archive_subfolder_path}/merged.hex" \
+          -intel -crop 0xC0000 0x100000 -o "${BUILD_PATH_FWLOADER_HEX}" -intel
+    fi
+  fi
+else
+  BUILD_PATH_FWLOADER_HEX="$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
+fi
 
 # check if build_mode is release
 if [ "$build_mode" = "release" ]; then
@@ -583,25 +682,19 @@ if [ "$build_mode" = "release" ]; then
     $ZEPHYR_BASE/scripts/build/mergehex.py \
       -o $BUILD_DIR/merged.hex \
       --overlap=replace \
-      $BUILD_DIR/app_provision.hex \
-      $BUILD_DIR/b0_container.hex \
-      $BUILD_DIR/s0_image.hex \
-      $BUILD_DIR/s0.hex \
-      $BUILD_DIR/s1.hex \
-      $BUILD_DIR/mcuboot_secondary_app.hex \
-      $BUILD_DIR/mcuboot_secondary.hex \
-      $BUILD_DIR/b0/zephyr/ruuvi_air_b0.hex \
-      $BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex \
-      $BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex \
-      $BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex \
+      ${BUILD_PATH_B0_CONTAINER_HEX} \
+      ${BUILD_PATH_B0_APP_PROVISION_HEX} \
+      ${BUILD_PATH_MCUBOOT0_HEX} \
+      ${BUILD_PATH_MCUBOOT1_HEX} \
+      ${BUILD_PATH_FWLOADER_HEX} \
       $RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.hex
 
 
   OFFSET=0x12000000
-  srec_cat "$BUILD_DIR/app_provision.hex" -intel --offset $OFFSET -o "$BUILD_DIR/app_provision.ext_flash.hex" -intel
-  srec_cat "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.ext_flash.hex" -intel
-  srec_cat "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.ext_flash.hex" -intel
-  srec_cat "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex" -intel --offset $OFFSET -o "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.ext_flash.hex" -intel
+  srec_cat "${BUILD_PATH_B0_APP_PROVISION_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/app_provision.ext_flash.hex" -intel
+  srec_cat "${BUILD_PATH_MCUBOOT0_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.ext_flash.hex" -intel
+  srec_cat "${BUILD_PATH_MCUBOOT1_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.ext_flash.hex" -intel
+  srec_cat "${BUILD_PATH_FWLOADER_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.ext_flash.hex" -intel
   srec_cat "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.hex" -intel --offset $OFFSET -o "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.ext_flash.hex" -intel
   srec_cat \
       "$BUILD_DIR/app_provision.ext_flash.hex" -intel \

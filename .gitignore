@@ -5,6 +5,7 @@
 # build
 build*/
 cmake-build-*/
+.releases/
 
 twister-out*/
 
