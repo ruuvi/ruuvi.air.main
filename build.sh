@@ -11,34 +11,9 @@ CUR_DIR_NAME=$(basename "$PWD")
 
 die() { echo "Error: $*" >&2; exit 1; }
 
-# Ensure that ZEPHYR_BASE is set
-if [ -z "$ZEPHYR_BASE" ]; then
-  echo "Error: ZEPHYR_BASE is not set. Please set it to the Zephyr base directory." >&2
-  exit 1
-fi
-# Ensure that west is installed
-if ! command -v west &> /dev/null; then
-  echo "Error: west is not installed. Please install it to continue." >&2
-  exit 1
-fi
 # Ensure that srec_cat is installed
 if ! command -v srec_cat &> /dev/null; then
   echo "Error: srec_cat is not installed. Please install it to continue." >&2
-  exit 1
-fi
-# Ensure that python3 is installed
-if ! command -v python3 &> /dev/null; then
-  echo "Error: python3 is not installed. Please install it to continue." >&2
-  exit 1
-fi
-# Ensure that mergehex.py is available
-if [ ! -f "$ZEPHYR_BASE/scripts/build/mergehex.py" ]; then
-  echo "Error: mergehex.py not found in $ZEPHYR_BASE/scripts/build/. Please ensure Zephyr is properly installed." >&2
-  exit 1
-fi
-# Ensure that the signing keys directory exists
-if [ ! -d "$HOME/.signing_keys" ]; then
-  echo "Error: ~/.signing_keys directory does not exist. Please ensure the signing keys are set up correctly." >&2
   exit 1
 fi
 
@@ -469,6 +444,31 @@ fi
 
 download_all_releases "$board_suffix" "$build_mode_suffix" "false"
 
+# Ensure that ZEPHYR_BASE is set
+if [ -z "$ZEPHYR_BASE" ]; then
+  echo "Error: ZEPHYR_BASE is not set. Please set it to the Zephyr base directory." >&2
+  exit 1
+fi
+# Ensure that west is installed
+if ! command -v west &> /dev/null; then
+  echo "Error: west is not installed. Please install it to continue." >&2
+  exit 1
+fi
+# Ensure that python3 is installed
+if ! command -v python3 &> /dev/null; then
+  echo "Error: python3 is not installed. Please install it to continue." >&2
+  exit 1
+fi
+# Ensure that mergehex.py is available
+if [ ! -f "$ZEPHYR_BASE/scripts/build/mergehex.py" ]; then
+  echo "Error: mergehex.py not found in $ZEPHYR_BASE/scripts/build/. Please ensure Zephyr is properly installed." >&2
+  exit 1
+fi
+# Ensure that the signing keys directory exists
+if [ ! -d "$HOME/.signing_keys" ]; then
+  echo "Error: ~/.signing_keys directory does not exist. Please ensure the signing keys are set up correctly." >&2
+  exit 1
+fi
 
 b0_full_ver=$(git_tag_to_semver b0_v . $extra_ver_suffix)
 mcuboot_full_ver=$(git_tag_to_semver mcuboot_v . $extra_ver_suffix)
