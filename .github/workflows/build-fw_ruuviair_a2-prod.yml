@@ -169,6 +169,11 @@ jobs:
           echo "SCRIPT_PATH=./${SCRIPT_NAME}.sh" >> "$GITHUB_ENV"
           echo "BUILD_DIR_NAME=${SCRIPT_NAME}" >> "$GITHUB_ENV"
 
+      - name: Download B0, mcuboot, and fwloader releases
+        working_directory: $GITHUB_WORKSPACE/${PROJECT_DIR}
+        run: |
+          "./${SCRIPT_PATH}" --download_releases
+
       - name: Build inside Docker container (reusing cached .nrfutil and ncs)
         env:
           IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
