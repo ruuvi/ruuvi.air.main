@@ -213,7 +213,7 @@ jobs:
       - name: Download B0, mcuboot, and fwloader releases
         run: |
           cd "$GITHUB_WORKSPACE/${PROJECT_DIR}"
-          "./${SCRIPT_PATH}" --download_releases
+          "./build_ruuviair_a3_release-dev.sh" --download_releases
 
       - name: Run SonarQube scanning inside Docker container
         env:
