@@ -11,12 +11,6 @@ CUR_DIR_NAME=$(basename "$PWD")
 
 die() { echo "Error: $*" >&2; exit 1; }
 
-# Ensure that srec_cat is installed
-if ! command -v srec_cat &> /dev/null; then
-  echo "Error: srec_cat is not installed. Please install it to continue." >&2
-  exit 1
-fi
-
 # Initialize defaults (if any)
 BUILD_DIR=""
 board=""
@@ -367,11 +361,7 @@ download_release() {
 
   if [[ "$force" == "true" || \
       ! -d "${archive_subfolder_path}" || \
-      ! -f "${path_b0_container_hex}" || \
-      ! -f "${path_app_provision_hex}" || \
-      ! -f "${path_mcuboot0_hex}" || \
-      ! -f "${path_mcuboot1_hex}" || \
-      ! -f "${path_fwloader_hex}" ]]; then
+      ! -f "${archive_subfolder_path}/merged.hex" ]]; then
     if [[ -n "${local_path}" ]]; then
       echo "Using local release archive: ${local_path}"
       mkdir -p "${archive_subfolder_path}"
@@ -381,29 +371,30 @@ download_release() {
       env -u LD_LIBRARY_PATH -u LD_PRELOAD curl -fL --retry 3 --retry-delay 2 -o "$archive_path" "$url" || die "Failed to download $url"
       unzip -o "$archive_path" -d "$extract_path"
     fi
+  fi
+  if [[ "$force" == "true" ]]; then
+    return 0
+  fi
 
-    if [[ ! -f "${path_b0_container_hex}" ]]; then
-      srec_cat "${archive_subfolder_path}/merged.hex" \
-          -intel -crop 0x0 0xD000 -o "${path_b0_container_hex}" -intel
-    fi
-    if [[ ! -f "${path_app_provision_hex}" ]]; then
-      srec_cat "${archive_subfolder_path}/merged.hex" \
-          -intel -crop 0xD000 0xE000 -o "${path_app_provision_hex}" -intel
-    fi
-    if [[ ! -f "${path_mcuboot0_hex}" ]]; then
-      srec_cat "${archive_subfolder_path}/merged.hex" \
-          -intel -crop 0xE000 0x27000 -o "${path_mcuboot0_hex}" -intel
-    fi
-    if [[ ! -f "${path_mcuboot1_hex}" ]]; then
-      srec_cat "${archive_subfolder_path}/merged.hex" \
-          -intel -crop 0x27000 0x40000 -o "${path_mcuboot1_hex}" -intel
-    fi
-    if [[ ! -f "${path_fwloader_hex}" ]]; then
-      srec_cat "${archive_subfolder_path}/merged.hex" \
-          -intel -crop 0xC0000 0x100000 -o "${path_fwloader_hex}" -intel
-    fi
-  else
-    echo "Release already exists: ${archive_subfolder_path}"
+  if [[ ! -f "${path_b0_container_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0x0 0xD000 -o "${path_b0_container_hex}" -intel
+  fi
+  if [[ ! -f "${path_app_provision_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0xD000 0xE000 -o "${path_app_provision_hex}" -intel
+  fi
+  if [[ ! -f "${path_mcuboot0_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0xE000 0x27000 -o "${path_mcuboot0_hex}" -intel
+  fi
+  if [[ ! -f "${path_mcuboot1_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0x27000 0x40000 -o "${path_mcuboot1_hex}" -intel
+  fi
+  if [[ ! -f "${path_fwloader_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0xC0000 0x100000 -o "${path_fwloader_hex}" -intel
   fi
 }
 
@@ -452,6 +443,11 @@ fi
 # Ensure that west is installed
 if ! command -v west &> /dev/null; then
   echo "Error: west is not installed. Please install it to continue." >&2
+  exit 1
+fi
+# Ensure that srec_cat is installed
+if ! command -v srec_cat &> /dev/null; then
+  echo "Error: srec_cat is not installed. Please install it to continue." >&2
   exit 1
 fi
 # Ensure that python3 is installed
