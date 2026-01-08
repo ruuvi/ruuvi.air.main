@@ -89,31 +89,6 @@ for arg in "$@"; do
   esac
 done
 
-# Ensure that the signing keys are available
-if [ "$flag_prod" = true ]; then
-  if [ ! -f "$HOME/.signing_keys/b0_sign_key_private-prod.pem" ]; then
-    echo "Error: b0_sign_key_private-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-  if [ ! -f "$HOME/.signing_keys/image_sign-prod.pem" ]; then
-    echo "Error: image_sign-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-else
-  if [ ! -f "$HOME/.signing_keys/b0_sign_key_private-dev.pem" ]; then
-    echo "Error: b0_sign_key_private-dev.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-  if [ ! -f "$HOME/.signing_keys/b0_sign_key_public-prod.pem" ]; then
-    echo "Error: b0_sign_key_public-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-  if [ ! -f "$HOME/.signing_keys/image_sign-dev.pem" ]; then
-    echo "Error: image_sign-dev.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-fi
-
 if [ -z "$board" ]; then
   echo "Error: --board is required" >&2
   exit 1
@@ -465,6 +440,32 @@ if [ ! -d "$HOME/.signing_keys" ]; then
   echo "Error: ~/.signing_keys directory does not exist. Please ensure the signing keys are set up correctly." >&2
   exit 1
 fi
+
+# Ensure that the signing keys are available
+if [ "$flag_prod" = true ]; then
+  if [ ! -f "$HOME/.signing_keys/b0_sign_key_private-prod.pem" ]; then
+    echo "Error: b0_sign_key_private-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+  if [ ! -f "$HOME/.signing_keys/image_sign-prod.pem" ]; then
+    echo "Error: image_sign-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+else
+  if [ ! -f "$HOME/.signing_keys/b0_sign_key_private-dev.pem" ]; then
+    echo "Error: b0_sign_key_private-dev.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+  if [ ! -f "$HOME/.signing_keys/b0_sign_key_public-prod.pem" ]; then
+    echo "Error: b0_sign_key_public-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+  if [ ! -f "$HOME/.signing_keys/image_sign-dev.pem" ]; then
+    echo "Error: image_sign-dev.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+fi
+
 
 b0_full_ver=$(git_tag_to_semver b0_v . $extra_ver_suffix)
 mcuboot_full_ver=$(git_tag_to_semver mcuboot_v . $extra_ver_suffix)
