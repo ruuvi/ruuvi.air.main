@@ -9,36 +9,7 @@ set -x -e # Print commands and their arguments and Exit immediately if a command
 
 CUR_DIR_NAME=$(basename "$PWD")
 
-# Ensure that ZEPHYR_BASE is set
-if [ -z "$ZEPHYR_BASE" ]; then
-  echo "Error: ZEPHYR_BASE is not set. Please set it to the Zephyr base directory." >&2
-  exit 1
-fi
-# Ensure that west is installed
-if ! command -v west &> /dev/null; then
-  echo "Error: west is not installed. Please install it to continue." >&2
-  exit 1
-fi
-# Ensure that srec_cat is installed
-if ! command -v srec_cat &> /dev/null; then
-  echo "Error: srec_cat is not installed. Please install it to continue." >&2
-  exit 1
-fi
-# Ensure that python3 is installed
-if ! command -v python3 &> /dev/null; then
-  echo "Error: python3 is not installed. Please install it to continue." >&2
-  exit 1
-fi
-# Ensure that mergehex.py is available
-if [ ! -f "$ZEPHYR_BASE/scripts/build/mergehex.py" ]; then
-  echo "Error: mergehex.py not found in $ZEPHYR_BASE/scripts/build/. Please ensure Zephyr is properly installed." >&2
-  exit 1
-fi
-# Ensure that the signing keys directory exists
-if [ ! -d "$HOME/.signing_keys" ]; then
-  echo "Error: ~/.signing_keys directory does not exist. Please ensure the signing keys are set up correctly." >&2
-  exit 1
-fi
+die() { echo "Error: $*" >&2; exit 1; }
 
 # Initialize defaults (if any)
 BUILD_DIR=""
@@ -54,6 +25,7 @@ flash=false
 flash_ext=false
 flag_clean=false
 flag_prod=false
+flag_download_releases=false
 
 # Loop over all arguments
 for arg in "$@"; do
@@ -106,37 +78,16 @@ for arg in "$@"; do
       flash_ext=true
       shift
       ;;
+    --download_releases)
+      flag_download_releases=true
+      shift
+      ;;
     *)
       echo "Error: Unknown argument '$1'" >&2
       exit 1
       ;;
   esac
 done
-
-# Ensure that the signing keys are available
-if [ "$flag_prod" = true ]; then
-  if [ ! -f "$HOME/.signing_keys/b0_sign_key_private-prod.pem" ]; then
-    echo "Error: b0_sign_key_private-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-  if [ ! -f "$HOME/.signing_keys/image_sign-prod.pem" ]; then
-    echo "Error: image_sign-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-else
-  if [ ! -f "$HOME/.signing_keys/b0_sign_key_private-dev.pem" ]; then
-    echo "Error: b0_sign_key_private-dev.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-  if [ ! -f "$HOME/.signing_keys/b0_sign_key_public-prod.pem" ]; then
-    echo "Error: b0_sign_key_public-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-  if [ ! -f "$HOME/.signing_keys/image_sign-dev.pem" ]; then
-    echo "Error: image_sign-dev.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
-    exit 1
-  fi
-fi
 
 if [ -z "$board" ]; then
   echo "Error: --board is required" >&2
@@ -344,8 +295,175 @@ get_extra_ver() {
 
 if [ "$flag_prod" = true ]; then
   extra_ver_suffix=""
+  build_mode_suffix="prod"
 else
   extra_ver_suffix="dev"
+  build_mode_suffix="dev"
+fi
+
+VERSIONS_FILE="./BUILD_VERSIONS"
+# Extract versions safely (require vX.Y.Z format)
+B0_VER=$(grep -E '^\s*b0\s*=\s*v[0-9]+\.[0-9]+\.[0-9]+\s*$' "$VERSIONS_FILE" | sed -E 's/.*=\s*(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
+MCUBOOT_VER=$(grep -E '^\s*mcuboot\s*=\s*v[0-9]+\.[0-9]+\.[0-9]+\s*$' "$VERSIONS_FILE" | sed -E 's/.*=\s*(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
+FWLOADER_VER=$(grep -E '^\s*fwloader\s*=\s*v[0-9]+\.[0-9]+\.[0-9]+\s*$' "$VERSIONS_FILE" | sed -E 's/.*=\s*(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
+
+RELEASES_DIR="./.releases"
+B0_RELEASE_DIR="./b0_release"
+BASE_URL="https://github.com/ruuvi/ruuvi.air.main/releases/download"
+
+# Download a release archive and extract it
+# Usage: download_release <tag> <board_suffix> <build_mode_suffix> <force> [local_path]
+download_release() {
+  local tag="$1"
+  local board_suffix="$2"
+  local build_mode_suffix="$3"
+  local force="${4:-false}"
+  local local_path="${5}"
+
+  local build_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
+  local archive_name="${build_name}_${tag}"
+  local archive_subfolder_name="${build_name}"
+
+  local archive_path="${RELEASES_DIR}/${archive_name}.zip"
+  local extract_path="${RELEASES_DIR}/${archive_name}"
+  local url="${BASE_URL}/${tag}/${archive_name}.zip"
+  local archive_subfolder_path="${extract_path}/${archive_subfolder_name}"
+  local path_b0_container_hex="${archive_subfolder_path}/b0_container.hex"
+  local path_app_provision_hex="${archive_subfolder_path}/app_provision.hex"
+  local path_mcuboot0_hex="${archive_subfolder_path}/signed_by_mcuboot_and_b0_mcuboot.hex"
+  local path_mcuboot1_hex="${archive_subfolder_path}/signed_by_mcuboot_and_b0_s1_image.hex"
+  local path_fwloader_hex="${archive_subfolder_path}/ruuvi_air_fw_loader.signed.hex"
+
+  if [[ "$force" == "true" || \
+      ! -d "${archive_subfolder_path}" || \
+      ! -f "${archive_subfolder_path}/merged.hex" ]]; then
+    if [[ -n "${local_path}" ]]; then
+      echo "Using local release archive: ${local_path}"
+      mkdir -p "${archive_subfolder_path}"
+      cp "${local_path}/merged.hex" "${archive_subfolder_path}/merged.hex"
+    else
+      echo "Downloading release: $url"
+      env -u LD_LIBRARY_PATH -u LD_PRELOAD curl -fL --retry 3 --retry-delay 2 -o "$archive_path" "$url" || die "Failed to download $url"
+      unzip -o "$archive_path" -d "$extract_path"
+    fi
+  fi
+  if [[ "$force" == "true" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "${path_b0_container_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0x0 0xD000 -o "${path_b0_container_hex}" -intel
+  fi
+  if [[ ! -f "${path_app_provision_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0xD000 0xE000 -o "${path_app_provision_hex}" -intel
+  fi
+  if [[ ! -f "${path_mcuboot0_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0xE000 0x27000 -o "${path_mcuboot0_hex}" -intel
+  fi
+  if [[ ! -f "${path_mcuboot1_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0x27000 0x40000 -o "${path_mcuboot1_hex}" -intel
+  fi
+  if [[ ! -f "${path_fwloader_hex}" ]]; then
+    srec_cat "${archive_subfolder_path}/merged.hex" \
+        -intel -crop 0xC0000 0x100000 -o "${path_fwloader_hex}" -intel
+  fi
+}
+
+# Usage: download_all_releases <board_suffix> <build_mode_suffix> <force>
+download_all_releases() {
+  local board_suffix="$1"
+  local build_mode_suffix="$2"
+  local force="${3:-false}"
+
+  mkdir -p "$RELEASES_DIR"
+
+  if [[ -n "${B0_VER}" ]]; then
+    if [[ -d "${B0_RELEASE_DIR}/${B0_VER}" ]]; then
+      download_release "b0_${B0_VER}" "$board_suffix" "$build_mode_suffix" "$force" \
+        "${B0_RELEASE_DIR}/${B0_VER}/ruuviair_hw2_release-${build_mode_suffix}"
+    else
+      download_release "b0_${B0_VER}" "$board_suffix" "$build_mode_suffix" "$force"
+    fi
+  fi
+  if [[ -n "${MCUBOOT_VER}" ]]; then
+    download_release "mcuboot_${MCUBOOT_VER}" "$board_suffix" "$build_mode_suffix" "$force"
+  fi
+  if [[ -n "${FWLOADER_VER}" ]]; then
+    download_release "fwloader_${FWLOADER_VER}" "$board_suffix" "$build_mode_suffix" "$force"
+  fi
+}
+
+# Handle --download_releases flag early exit
+if [ "$flag_download_releases" = true ]; then
+  if [ -z "$board_rev_name" ]; then
+    echo "Error: --board_rev_name is required for --download_releases" >&2
+    exit 1
+  fi
+  download_all_releases "$board_suffix" "$build_mode_suffix" "true"
+  echo "All releases downloaded successfully."
+  exit 0
+fi
+
+download_all_releases "$board_suffix" "$build_mode_suffix" "false"
+
+# Ensure that ZEPHYR_BASE is set
+if [ -z "$ZEPHYR_BASE" ]; then
+  echo "Error: ZEPHYR_BASE is not set. Please set it to the Zephyr base directory." >&2
+  exit 1
+fi
+# Ensure that west is installed
+if ! command -v west &> /dev/null; then
+  echo "Error: west is not installed. Please install it to continue." >&2
+  exit 1
+fi
+# Ensure that srec_cat is installed
+if ! command -v srec_cat &> /dev/null; then
+  echo "Error: srec_cat is not installed. Please install it to continue." >&2
+  exit 1
+fi
+# Ensure that python3 is installed
+if ! command -v python3 &> /dev/null; then
+  echo "Error: python3 is not installed. Please install it to continue." >&2
+  exit 1
+fi
+# Ensure that mergehex.py is available
+if [ ! -f "$ZEPHYR_BASE/scripts/build/mergehex.py" ]; then
+  echo "Error: mergehex.py not found in $ZEPHYR_BASE/scripts/build/. Please ensure Zephyr is properly installed." >&2
+  exit 1
+fi
+# Ensure that the signing keys directory exists
+if [ ! -d "$HOME/.signing_keys" ]; then
+  echo "Error: ~/.signing_keys directory does not exist. Please ensure the signing keys are set up correctly." >&2
+  exit 1
+fi
+
+# Ensure that the signing keys are available
+if [ "$flag_prod" = true ]; then
+  if [ ! -f "$HOME/.signing_keys/b0_sign_key_private-prod.pem" ]; then
+    echo "Error: b0_sign_key_private-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+  if [ ! -f "$HOME/.signing_keys/image_sign-prod.pem" ]; then
+    echo "Error: image_sign-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+else
+  if [ ! -f "$HOME/.signing_keys/b0_sign_key_private-dev.pem" ]; then
+    echo "Error: b0_sign_key_private-dev.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+  if [ ! -f "$HOME/.signing_keys/b0_sign_key_public-prod.pem" ]; then
+    echo "Error: b0_sign_key_public-prod.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
+  if [ ! -f "$HOME/.signing_keys/image_sign-dev.pem" ]; then
+    echo "Error: image_sign-dev.pem not found in ~/.signing_keys/. Please ensure the signing keys are set up correctly." >&2
+    exit 1
+  fi
 fi
 
 
@@ -537,6 +655,44 @@ fi
 
 RUUVI_AIR_BUILD_DIR="$BUILD_DIR/$CUR_DIR_NAME/zephyr"
 
+if [[ -n "${B0_VER}" ]]; then
+  B0_TAG="b0_${B0_VER}"
+  archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${B0_TAG}"
+  archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
+  archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
+
+  BUILD_PATH_B0_CONTAINER_HEX="${archive_subfolder_path}/b0_container.hex"
+  BUILD_PATH_B0_APP_PROVISION_HEX="${archive_subfolder_path}/app_provision.hex"
+
+else
+  BUILD_PATH_B0_CONTAINER_HEX="$BUILD_DIR/b0_container.hex"
+  BUILD_PATH_B0_APP_PROVISION_HEX="$BUILD_DIR/app_provision.hex"
+fi
+
+if [[ -n "${MCUBOOT_VER}" ]]; then
+  MCUBOOT_TAG="mcuboot_${MCUBOOT_VER}"
+  archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${MCUBOOT_TAG}"
+  archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
+  archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
+
+  BUILD_PATH_MCUBOOT0_HEX="${archive_subfolder_path}/signed_by_mcuboot_and_b0_mcuboot.hex"
+  BUILD_PATH_MCUBOOT1_HEX="${archive_subfolder_path}/signed_by_mcuboot_and_b0_s1_image.hex"
+
+else
+  BUILD_PATH_MCUBOOT0_HEX="$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex"
+  BUILD_PATH_MCUBOOT1_HEX="$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex"
+fi
+
+if [[ -n "${FWLOADER_VER}" ]]; then
+  FWLOADER_TAG="fwloader_${FWLOADER_VER}"
+  archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${FWLOADER_TAG}"
+  archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
+  archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
+
+  BUILD_PATH_FWLOADER_HEX="${archive_subfolder_path}/ruuvi_air_fw_loader.signed.hex"
+else
+  BUILD_PATH_FWLOADER_HEX="$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
+fi
 
 # check if build_mode is release
 if [ "$build_mode" = "release" ]; then
@@ -583,25 +739,19 @@ if [ "$build_mode" = "release" ]; then
     $ZEPHYR_BASE/scripts/build/mergehex.py \
       -o $BUILD_DIR/merged.hex \
       --overlap=replace \
-      $BUILD_DIR/app_provision.hex \
-      $BUILD_DIR/b0_container.hex \
-      $BUILD_DIR/s0_image.hex \
-      $BUILD_DIR/s0.hex \
-      $BUILD_DIR/s1.hex \
-      $BUILD_DIR/mcuboot_secondary_app.hex \
-      $BUILD_DIR/mcuboot_secondary.hex \
-      $BUILD_DIR/b0/zephyr/ruuvi_air_b0.hex \
-      $BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex \
-      $BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex \
-      $BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex \
+      ${BUILD_PATH_B0_CONTAINER_HEX} \
+      ${BUILD_PATH_B0_APP_PROVISION_HEX} \
+      ${BUILD_PATH_MCUBOOT0_HEX} \
+      ${BUILD_PATH_MCUBOOT1_HEX} \
+      ${BUILD_PATH_FWLOADER_HEX} \
       $RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.hex
 
 
   OFFSET=0x12000000
-  srec_cat "$BUILD_DIR/app_provision.hex" -intel --offset $OFFSET -o "$BUILD_DIR/app_provision.ext_flash.hex" -intel
-  srec_cat "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.ext_flash.hex" -intel
-  srec_cat "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.ext_flash.hex" -intel
-  srec_cat "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex" -intel --offset $OFFSET -o "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.ext_flash.hex" -intel
+  srec_cat "${BUILD_PATH_B0_APP_PROVISION_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/app_provision.ext_flash.hex" -intel
+  srec_cat "${BUILD_PATH_MCUBOOT0_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.ext_flash.hex" -intel
+  srec_cat "${BUILD_PATH_MCUBOOT1_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.ext_flash.hex" -intel
+  srec_cat "${BUILD_PATH_FWLOADER_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.ext_flash.hex" -intel
   srec_cat "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.hex" -intel --offset $OFFSET -o "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.ext_flash.hex" -intel
   srec_cat \
       "$BUILD_DIR/app_provision.ext_flash.hex" -intel \

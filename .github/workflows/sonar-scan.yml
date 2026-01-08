@@ -210,6 +210,11 @@ jobs:
           ls -la $GITHUB_WORKSPACE/${PROJECT_DIR}
           sleep 1
 
+      - name: Download B0, mcuboot, and fwloader releases
+        run: |
+          cd "$GITHUB_WORKSPACE/${PROJECT_DIR}"
+          "./build_ruuviair_a3_release-dev.sh" --download_releases
+
       - name: Run SonarQube scanning inside Docker container
         env:
           IMAGE_REF: ${{ steps.img.outputs.IMAGE_REF }}
