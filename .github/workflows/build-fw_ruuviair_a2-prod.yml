@@ -292,8 +292,9 @@ jobs:
           TAG: ${{ github.ref_name }}
           ARTIFACT_NAME: ${{ steps.create_zip.outputs.artifact_name }}
         shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          set -e
+          set -xe
           command -v gh >/dev/null 2>&1 || { echo "gh CLI not found"; exit 1; }
           # create if missing; on failure re-check to tolerate races
           if ! gh release view "$TAG" >/dev/null 2>&1; then
