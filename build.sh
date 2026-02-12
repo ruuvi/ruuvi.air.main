@@ -345,6 +345,19 @@ download_release() {
       echo "Downloading release: $url"
       env -u LD_LIBRARY_PATH -u LD_PRELOAD curl -fL --retry 3 --retry-delay 2 -o "$archive_path" "$url" || die "Failed to download $url"
       unzip -o "$archive_path" -d "$extract_path"
+      # Handle zip archives that contain a top-level folder matching the archive name.
+      # In that case, the extracted structure is:
+      #   $extract_path/$archive_name/$archive_subfolder_name
+      # but we expect:
+      #   $extract_path/$archive_subfolder_name
+      # So move the contents up one level and remove the duplicate folder.
+      local nested_path="${extract_path}/${archive_name}"
+      if [[ -d "${nested_path}/${archive_subfolder_name}" ]]; then
+        # Move the subfolder up, replacing any existing one
+        rm -rf "${extract_path}/${archive_subfolder_name}"
+        mv "${nested_path}/${archive_subfolder_name}" "${extract_path}/${archive_subfolder_name}"
+        rm -rf "${nested_path}"
+      fi
     fi
   fi
   if [[ "$force" == "true" ]]; then
