@@ -317,4 +317,4 @@ jobs:
           # Use a name without .zip; GitHub adds .zip on download if the name ends with .zip
           name: ${{ steps.create_zip.outputs.artifact_name }}
           # Upload whole directory with build artifacts
-          path: ${{ steps.create_zip.outputs.artifact_path }}
+          path: ${{ steps.create_zip.outputs.artifact_name }}
