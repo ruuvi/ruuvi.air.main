@@ -1,4 +1,4 @@
 # Comment out the line with the version to use the current build version
 b0=v1.0.6
-mcuboot=v1.3.0
-fwloader=v1.3.0
+mcuboot=v1.3.4
+fwloader=v1.3.4
