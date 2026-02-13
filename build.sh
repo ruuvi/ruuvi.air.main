@@ -676,6 +676,8 @@ if [[ -n "${B0_VER}" ]]; then
 
   BUILD_PATH_B0_CONTAINER_HEX="${archive_subfolder_path}/b0_container.hex"
   BUILD_PATH_B0_APP_PROVISION_HEX="${archive_subfolder_path}/app_provision.hex"
+  cp ${archive_subfolder_path}/b0_container.hex "$BUILD_DIR/b0_container.hex"
+  cp ${archive_subfolder_path}/app_provision.hex "$BUILD_DIR/app_provision.hex"
 
 else
   BUILD_PATH_B0_CONTAINER_HEX="$BUILD_DIR/b0_container.hex"
@@ -690,6 +692,8 @@ if [[ -n "${MCUBOOT_VER}" ]]; then
 
   BUILD_PATH_MCUBOOT0_HEX="${archive_subfolder_path}/signed_by_mcuboot_and_b0_mcuboot.hex"
   BUILD_PATH_MCUBOOT1_HEX="${archive_subfolder_path}/signed_by_mcuboot_and_b0_s1_image.hex"
+  cp ${archive_subfolder_path}/signed_by_mcuboot_and_b0_mcuboot.hex "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex"
+  cp ${archive_subfolder_path}/signed_by_mcuboot_and_b0_s1_image.hex "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex"
 
 else
   BUILD_PATH_MCUBOOT0_HEX="$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex"
@@ -703,6 +707,7 @@ if [[ -n "${FWLOADER_VER}" ]]; then
   archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
 
   BUILD_PATH_FWLOADER_HEX="${archive_subfolder_path}/ruuvi_air_fw_loader.signed.hex"
+  cp ${archive_subfolder_path}/ruuvi_air_fw_loader.signed.hex "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
 else
   BUILD_PATH_FWLOADER_HEX="$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
 fi
