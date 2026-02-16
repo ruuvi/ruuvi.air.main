@@ -196,7 +196,7 @@ jobs:
       - name: Download B0, mcuboot, and fwloader releases
         run: |
           cd "$GITHUB_WORKSPACE/${PROJECT_DIR}"
-          "./${SCRIPT_PATH}" ${BUILD_FLAGS} --download_releases
+          "./${SCRIPT_PATH}" "${BUILD_FLAGS}" --download_releases
 
       - name: Build inside Docker container (reusing cached .nrfutil and ncs)
         env:
@@ -238,7 +238,7 @@ jobs:
               cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
 
               echo ">>> Running build script: ${SCRIPT_PATH}"
-              "./${SCRIPT_PATH}" --build_dir="${BUILD_DIR_NAME}" ${BUILD_FLAGS}
+              "./${SCRIPT_PATH}" --build_dir="${BUILD_DIR_NAME}" "${BUILD_FLAGS}"
             '
 
           mv "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}" "$GITHUB_WORKSPACE/${PROJECT_DIR}"
@@ -295,20 +295,21 @@ jobs:
                 "b0_container.hex"
                 "app_provision.hex"
               )
-            fi
-            if [ "${flag_build_release_mcuboot}" = true ]; then
+            elif [ "${flag_build_release_mcuboot}" = true ]; then
               paths=(
                 "signed_by_mcuboot_and_b0_mcuboot.bin"
                 "signed_by_mcuboot_and_b0_mcuboot.hex"
                 "signed_by_mcuboot_and_b0_s1_image.bin"
                 "signed_by_mcuboot_and_b0_s1_image.hex"
               )
-            fi
-            if [ "${flag_build_release_fwloader}" = true ]; then
+            elif [ "${flag_build_release_fwloader}" = true ]; then
               paths=(
                 "firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin"
                 "firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
               )
+            else
+              echo "Unknown subcomponent release tag: ${TAG}"
+              exit 1
             fi
           else
             paths=(

@@ -734,8 +734,8 @@ if [[ -n "${FWLOADER_VER}" && "$flag_build_release_subcomponent" != true ]]; the
   archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
 
   BUILD_PATH_FWLOADER_HEX="${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
-  cp ${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin"
-  cp ${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
+  cp "${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin" "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin"
+  cp "${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex" "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
 else
   BUILD_PATH_FWLOADER_HEX="$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
 fi
