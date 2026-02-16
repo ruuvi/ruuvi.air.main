@@ -26,6 +26,7 @@ flash_ext=false
 flag_clean=false
 flag_prod=false
 flag_download_releases=false
+tag_on_master=""
 
 # Loop over all arguments
 for arg in "$@"; do
@@ -82,8 +83,12 @@ for arg in "$@"; do
       flag_download_releases=true
       shift
       ;;
+    --tag_on_master=*)
+      tag_on_master="${arg#*=}"
+      shift
+      ;;
     *)
-      echo "Error: Unknown argument '$1'" >&2
+      echo "Error: Unknown argument '$arg'" >&2
       exit 1
       ;;
   esac
@@ -137,6 +142,26 @@ if [ "$flash_ext" = true ] || [ "$flash" = true ]; then
   if ! command -v nrfjprog &> /dev/null; then
     echo "Error: nrfjprog is not installed. Please install it to continue." >&2
     exit 1
+  fi
+fi
+
+flag_build_release_subcomponent=false
+flag_build_release_b0=false
+flag_build_release_mcuboot=false
+flag_build_release_fwloader=false
+if [[ -n "$tag_on_master" ]]; then
+  echo "Tag on master: $tag_on_master"
+  if [[ "$tag_on_master" == "b0_v"* ]]; then
+    flag_build_release_subcomponent=true
+    flag_build_release_b0=true
+  fi
+  if [[ "$tag_on_master" == "mcuboot_v"* ]]; then
+    flag_build_release_subcomponent=true
+    flag_build_release_mcuboot=true
+  fi
+  if [[ "$tag_on_master" == "fwloader_v"* ]]; then
+    flag_build_release_subcomponent=true
+    flag_build_release_fwloader=true
   fi
 fi
 
@@ -410,18 +435,19 @@ download_all_releases() {
   fi
 }
 
-# Handle --download_releases flag early exit
-if [ "$flag_download_releases" = true ]; then
-  if [ -z "$board_rev_name" ]; then
-    echo "Error: --board_rev_name is required for --download_releases" >&2
-    exit 1
-  fi
-  download_all_releases "$board_suffix" "$build_mode_suffix" "true"
+if [ "$flag_build_release_subcomponent" = true ]; then
+  echo "Tag on master '$tag_on_master' indicates a release build for a subcomponent."
+  echo "Do not download releases for the subcomponents, as they will be built locally in this run and can be used directly without downloading."
+else
+  echo "Downloading releases for B0, MCUBOOT and FWLOADER as indicated by the absence of a release tag on master for these components."
+  download_all_releases "$board_suffix" "$build_mode_suffix" "$flag_download_releases"
   echo "All releases downloaded successfully."
-  exit 0
 fi
 
-download_all_releases "$board_suffix" "$build_mode_suffix" "false"
+# Handle --download_releases flag early exit
+if [ "$flag_download_releases" = true ]; then
+  exit 0
+fi
 
 # Ensure that ZEPHYR_BASE is set
 if [ -z "$ZEPHYR_BASE" ]; then
@@ -668,7 +694,7 @@ fi
 
 RUUVI_AIR_BUILD_DIR="$BUILD_DIR/$CUR_DIR_NAME/zephyr"
 
-if [[ -n "${B0_VER}" ]]; then
+if [[ -n "${B0_VER}" && "$flag_build_release_subcomponent" != true ]]; then
   B0_TAG="b0_${B0_VER}"
   archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${B0_TAG}"
   archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
@@ -684,7 +710,7 @@ else
   BUILD_PATH_B0_APP_PROVISION_HEX="$BUILD_DIR/app_provision.hex"
 fi
 
-if [[ -n "${MCUBOOT_VER}" ]]; then
+if [[ -n "${MCUBOOT_VER}" && "$flag_build_release_subcomponent" != true ]]; then
   MCUBOOT_TAG="mcuboot_${MCUBOOT_VER}"
   archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${MCUBOOT_TAG}"
   archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
@@ -701,15 +727,15 @@ else
   BUILD_PATH_MCUBOOT1_HEX="$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex"
 fi
 
-if [[ -n "${FWLOADER_VER}" ]]; then
+if [[ -n "${FWLOADER_VER}" && "$flag_build_release_subcomponent" != true ]]; then
   FWLOADER_TAG="fwloader_${FWLOADER_VER}"
   archive_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}_${FWLOADER_TAG}"
   archive_subfolder_name="build_ruuviair_${board_suffix}_release-${build_mode_suffix}"
   archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
 
-  BUILD_PATH_FWLOADER_HEX="${archive_subfolder_path}/ruuvi_air_fw_loader.signed.hex"
-  cp ${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin"
-  cp ${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
+  BUILD_PATH_FWLOADER_HEX="${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
+  cp "${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin" "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin"
+  cp "${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex" "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
 else
   BUILD_PATH_FWLOADER_HEX="$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
 fi
@@ -768,7 +794,6 @@ if [ "$build_mode" = "release" ]; then
       ${BUILD_PATH_FWLOADER_HEX} \
       $RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.hex
 
-
   OFFSET=0x12000000
   srec_cat "${BUILD_PATH_B0_APP_PROVISION_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/app_provision.ext_flash.hex" -intel
   srec_cat "${BUILD_PATH_MCUBOOT0_HEX}" -intel --offset $OFFSET -o "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.ext_flash.hex" -intel
@@ -782,6 +807,34 @@ if [ "$build_mode" = "release" ]; then
       "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.ext_flash.hex" -intel \
       "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.ext_flash.hex" -intel \
       -o "$BUILD_DIR/merged.ext_flash.hex" -intel
+
+  if [ "$flag_build_release_subcomponent" = true ]; then
+    rm "$BUILD_DIR/merged.hex"
+    rm "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.hex"
+    rm "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.bin"
+
+    rm "$BUILD_DIR/app_provision.ext_flash.hex"
+    rm "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.ext_flash.hex"
+    rm "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.ext_flash.hex"
+    rm "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.ext_flash.hex"
+    rm "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.ext_flash.hex"
+    rm "$BUILD_DIR/merged.ext_flash.hex"
+
+    if [ "$flag_build_release_b0" != true ]; then
+      rm "${BUILD_PATH_B0_CONTAINER_HEX}" \
+        "${BUILD_PATH_B0_APP_PROVISION_HEX}"
+    fi
+    if [ "$flag_build_release_mcuboot" != true ]; then
+      rm "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.bin" \
+        "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex"
+      rm "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.bin" \
+        "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex"
+    fi
+    if [ "$flag_build_release_fwloader" != true ]; then
+      rm "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin" \
+        "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
+    fi
+  fi
 fi
 
 if [ "$flash_ext" = true ]; then
