@@ -88,7 +88,7 @@ for arg in "$@"; do
       shift
       ;;
     *)
-      echo "Error: Unknown argument '$1'" >&2
+      echo "Error: Unknown argument '$arg'" >&2
       exit 1
       ;;
   esac

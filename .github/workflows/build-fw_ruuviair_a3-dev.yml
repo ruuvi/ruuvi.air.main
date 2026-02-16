@@ -199,7 +199,7 @@ jobs:
       - name: Download B0, mcuboot, and fwloader releases
         run: |
           cd "$GITHUB_WORKSPACE/${PROJECT_DIR}"
-          "./${SCRIPT_PATH}" "${BUILD_FLAGS}" --download_releases
+          "./${SCRIPT_PATH}" ${BUILD_FLAGS:+"${BUILD_FLAGS}"} --download_releases
 
       - name: Build inside Docker container (reusing cached .nrfutil and ncs)
         env:
@@ -241,7 +241,7 @@ jobs:
               cd $HOME/ncs/${NCS_VERSION}/${PROJECT_DIR}
 
               echo ">>> Running build script: ${SCRIPT_PATH}"
-              "./${SCRIPT_PATH}" --build_dir="${BUILD_DIR_NAME}" "${BUILD_FLAGS}"
+              "./${SCRIPT_PATH}" --build_dir="${BUILD_DIR_NAME}" ${BUILD_FLAGS:+"${BUILD_FLAGS}"}
             '
 
           mv "$HOME/ncs/${{ env.NCS_VERSION }}/${{ env.PROJECT_DIR }}" "$GITHUB_WORKSPACE/${PROJECT_DIR}"
