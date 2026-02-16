@@ -692,9 +692,10 @@ if [[ -n "${MCUBOOT_VER}" ]]; then
 
   BUILD_PATH_MCUBOOT0_HEX="${archive_subfolder_path}/signed_by_mcuboot_and_b0_mcuboot.hex"
   BUILD_PATH_MCUBOOT1_HEX="${archive_subfolder_path}/signed_by_mcuboot_and_b0_s1_image.hex"
+  cp ${archive_subfolder_path}/signed_by_mcuboot_and_b0_mcuboot.bin "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.bin"
   cp ${archive_subfolder_path}/signed_by_mcuboot_and_b0_mcuboot.hex "$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex"
+  cp ${archive_subfolder_path}/signed_by_mcuboot_and_b0_s1_image.bin "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.bin"
   cp ${archive_subfolder_path}/signed_by_mcuboot_and_b0_s1_image.hex "$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex"
-
 else
   BUILD_PATH_MCUBOOT0_HEX="$BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex"
   BUILD_PATH_MCUBOOT1_HEX="$BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex"
@@ -707,7 +708,8 @@ if [[ -n "${FWLOADER_VER}" ]]; then
   archive_subfolder_path="${RELEASES_DIR}/${archive_name}/${archive_subfolder_name}"
 
   BUILD_PATH_FWLOADER_HEX="${archive_subfolder_path}/ruuvi_air_fw_loader.signed.hex"
-  cp ${archive_subfolder_path}/ruuvi_air_fw_loader.signed.hex "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
+  cp ${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin"
+  cp ${archive_subfolder_path}/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex "$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
 else
   BUILD_PATH_FWLOADER_HEX="$BUILD_DIR/firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
 fi
@@ -717,42 +719,44 @@ if [ "$build_mode" = "release" ]; then
   s0_image_size=$(yq '.s0_image.size' "$PM_STATIC_YML_FILE")
   s1_image_size=$(yq '.s1_image.size' "$PM_STATIC_YML_FILE")
 
-  python3 \
-    "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
-    --version $mcuboot_base_ver --align 4 --slot-size $s0_image_size \
-    --pad-header --header-size 0x200 \
-    -k $IMAGE_SIGNING_KEY_FILE \
-    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
-    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
-    $BUILD_DIR/signed_by_b0_mcuboot.bin \
-    $BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.bin
-  python3 \
-    "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
-    --version $mcuboot_base_ver --align 4 --slot-size $s0_image_size \
-    --pad-header --header-size 0x200 \
-    -k $IMAGE_SIGNING_KEY_FILE \
-    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
-    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
-    $BUILD_DIR/signed_by_b0_mcuboot.hex \
-    $BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex
-  python3 \
-    "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
-    --version $mcuboot_base_ver --align 4 --slot-size $s1_image_size \
-    --pad-header --header-size 0x200 \
-    -k $IMAGE_SIGNING_KEY_FILE \
-    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
-    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
-    $BUILD_DIR/signed_by_b0_s1_image.bin \
-    $BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.bin
-  python3 \
-    "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
-    --version $mcuboot_base_ver --align 4 --slot-size $s1_image_size \
-    --pad-header --header-size 0x200 \
-    -k $IMAGE_SIGNING_KEY_FILE \
-    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
-    --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
-    $BUILD_DIR/signed_by_b0_s1_image.hex \
-    $BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex
+  if [[ -z "${MCUBOOT_VER}" ]]; then
+    python3 \
+      "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
+      --version $mcuboot_base_ver --align 4 --slot-size $s0_image_size \
+      --pad-header --header-size 0x200 \
+      -k $IMAGE_SIGNING_KEY_FILE \
+      --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
+      --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
+      $BUILD_DIR/signed_by_b0_mcuboot.bin \
+      $BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.bin
+    python3 \
+      "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
+      --version $mcuboot_base_ver --align 4 --slot-size $s0_image_size \
+      --pad-header --header-size 0x200 \
+      -k $IMAGE_SIGNING_KEY_FILE \
+      --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
+      --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
+      $BUILD_DIR/signed_by_b0_mcuboot.hex \
+      $BUILD_DIR/signed_by_mcuboot_and_b0_mcuboot.hex
+    python3 \
+      "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
+      --version $mcuboot_base_ver --align 4 --slot-size $s1_image_size \
+      --pad-header --header-size 0x200 \
+      -k $IMAGE_SIGNING_KEY_FILE \
+      --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
+      --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
+      $BUILD_DIR/signed_by_b0_s1_image.bin \
+      $BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.bin
+    python3 \
+      "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
+      --version $mcuboot_base_ver --align 4 --slot-size $s1_image_size \
+      --pad-header --header-size 0x200 \
+      -k $IMAGE_SIGNING_KEY_FILE \
+      --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_ID $board_rev_id_hex \
+      --custom-tlv $CUSTOM_TLV_RUUVI_HW_REV_NAME "$board_rev_name" \
+      $BUILD_DIR/signed_by_b0_s1_image.hex \
+      $BUILD_DIR/signed_by_mcuboot_and_b0_s1_image.hex
+  fi
   python3 \
     $ZEPHYR_BASE/scripts/build/mergehex.py \
       -o $BUILD_DIR/merged.hex \
