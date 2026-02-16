@@ -809,7 +809,6 @@ if [ "$build_mode" = "release" ]; then
       -o "$BUILD_DIR/merged.ext_flash.hex" -intel
 
   if [ "$flag_build_release_subcomponent" = true ]; then
-    rm "$BUILD_DIR/merged.hex"
     rm "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.hex"
     rm "$RUUVI_AIR_BUILD_DIR/ruuvi_air_fw.signed.bin"
 
