@@ -745,7 +745,7 @@ if [ "$build_mode" = "release" ]; then
   s0_image_size=$(yq '.s0_image.size' "$PM_STATIC_YML_FILE")
   s1_image_size=$(yq '.s1_image.size' "$PM_STATIC_YML_FILE")
 
-  if [[ -z "${MCUBOOT_VER}" ]]; then
+  if [[ -z "${MCUBOOT_VER}" || "$flag_build_release_subcomponent" == true ]]; then
     python3 \
       "$ZEPHYR_BASE/../bootloader/mcuboot/scripts/imgtool.py" sign \
       --version $mcuboot_base_ver --align 4 --slot-size $s0_image_size \
