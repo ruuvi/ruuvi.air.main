@@ -295,11 +295,13 @@ jobs:
           if [ "${flag_build_release_subcomponent}" = true ]; then
             if [ "${flag_build_release_b0}" = true ]; then
               paths=(
+                "merged.hex"
                 "b0_container.hex"
                 "app_provision.hex"
               )
             elif [ "${flag_build_release_mcuboot}" = true ]; then
               paths=(
+                "merged.hex"
                 "signed_by_mcuboot_and_b0_mcuboot.bin"
                 "signed_by_mcuboot_and_b0_mcuboot.hex"
                 "signed_by_mcuboot_and_b0_s1_image.bin"
@@ -307,6 +309,7 @@ jobs:
               )
             elif [ "${flag_build_release_fwloader}" = true ]; then
               paths=(
+                "merged.hex"
                 "firmware_loader/zephyr/ruuvi_air_fw_loader.signed.bin"
                 "firmware_loader/zephyr/ruuvi_air_fw_loader.signed.hex"
               )
