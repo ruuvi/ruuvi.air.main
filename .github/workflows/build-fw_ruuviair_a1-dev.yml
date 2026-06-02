@@ -261,8 +261,8 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/signing_keys"
 
-      - name: Create zip
-        id: create_zip
+      - name: Create release directory
+        id: create_zip   # kept for backwards-compat with `steps.create_zip.outputs.*` references
         env:
           TAG: ${{ github.ref_name }}
           TAG_ON_MASTER: ${{ steps.master_check.outputs.tag_on_master }}
@@ -365,12 +365,10 @@ jobs:
           fi
           cp "$extra_src" "$ARTIFACT_NAME/nrfjprog_cfg_ruuviair.toml"
 
-          # Create zip file to upload as release asset
-          ARTIFACT_PATH="$GITHUB_WORKSPACE/$ARTIFACT_NAME.zip"
-          zip -r -q "$ARTIFACT_PATH" "$ARTIFACT_NAME"
-
+          # The .zip file itself is created in the release job (see below)
+          # from the uploaded artifact, so the build job only exposes the
+          # directory's base name; no `artifact_path` output is needed here.
           echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
-          echo "artifact_path=$ARTIFACT_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact ${{ steps.create_zip.outputs.artifact_name }}
         uses: actions/upload-artifact@v7
