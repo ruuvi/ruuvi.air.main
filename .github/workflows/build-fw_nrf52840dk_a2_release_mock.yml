@@ -363,13 +363,7 @@ jobs:
       - name: Upload artifact ${{ steps.create_zip.outputs.artifact_name }}
         uses: actions/upload-artifact@v7
         with:
-          # Use a name without .zip; GitHub adds .zip on download if the name
-          # ends with .zip. Upload the per-run release DIRECTORY (not the .zip
-          # file produced by "Create zip"); this keeps the Actions-page
-          # "Download artifact" UX identical to the original implementation
-          # -- the downloaded wrapper zip contains the directory directly,
-          # not an inner zip. The release job (below) re-creates the .zip
-          # from this same artifact, so no second upload of identical bytes
-          # is needed between jobs.
+          # Use a name without .zip; GitHub adds .zip on download if the name ends with .zip
           name: ${{ steps.create_zip.outputs.artifact_name }}
+          # Upload whole directory with build artifacts
           path: ${{ steps.create_zip.outputs.artifact_name }}
