@@ -65,21 +65,21 @@ jobs:
 
       - name: Restore cached 'nrfutil Toolchain Manager'
         id: cache-nrfutil-tcm
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.nrfutil
           key: nrfutil-tcm-${{ env.NCS_VERSION }}-v4
 
       - name: Restore cached 'nRF Connect toolchains'
         id: cache-ncs-toolchains
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/ncs/toolchains
           key: ncs-toolchains-${{ env.NCS_VERSION }}-v4
 
       - name: Restore cached 'nRF Connect SDK ${{ env.NCS_VERSION }}'
         id: cache-ncs-sdk
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/ncs/${{ env.NCS_VERSION }}
           key: ncs-sdk-${{ env.NCS_VERSION }}-v4
@@ -126,27 +126,27 @@ jobs:
             '
       - name: Save 'nrfutil Toolchain Manager'
         if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' && !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.nrfutil
           key: ${{ steps.cache-nrfutil-tcm.outputs.cache-primary-key }}
 
       - name: Save 'nRF Connect toolchains' cache (only on miss)
         if: ${{ steps.cache-ncs-toolchains.outputs.cache-hit != 'true' && !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/ncs/toolchains
           key: ${{ steps.cache-ncs-toolchains.outputs.cache-primary-key }}
 
       - name: Save 'nRF Connect SDK' cache (only on miss)
         if: ${{ steps.cache-ncs-sdk.outputs.cache-hit != 'true' && !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/ncs/${{ env.NCS_VERSION }}
           key: ${{ steps.cache-ncs-sdk.outputs.cache-primary-key }}
 
       - name: Checkout the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: ${{ env.PROJECT_DIR }}
           fetch-depth: 0
@@ -259,7 +259,11 @@ jobs:
           set -xeuo pipefail
           pwd
           if [[ "${TAG_ON_MASTER:-false}" == "true" ]]; then
-            ARTIFACT_NAME="${{ env.BUILD_DIR_NAME }}_${TAG}"
+            # github.ref_name may contain '/' (e.g. "release/v1.2.3"); sanitize
+            # so the zip filename and uploaded asset name stay a single path
+            # component and the per-board/dev|prod naming scheme stays unique.
+            SAFE_TAG="${TAG//\//_}"
+            ARTIFACT_NAME="${{ env.BUILD_DIR_NAME }}_${SAFE_TAG}"
           else
             ARTIFACT_NAME="${{ env.BUILD_DIR_NAME }}"
           fi
@@ -334,11 +338,20 @@ jobs:
 
           for rel in "${paths[@]}"; do
             src_path="$SRC/$rel"
+            if [ ! -f "$src_path" ]; then
+              echo "Missing release file: $src_path" >&2
+              exit 1
+            fi
             dst_path="$DST/$rel"
             mkdir -p "$(dirname "$dst_path")"
             cp "$src_path" "$dst_path"
           done
-          cp "${{ env.PROJECT_DIR }}/nrfjprog_cfg_ruuviair.toml" "$ARTIFACT_NAME/nrfjprog_cfg_ruuviair.toml"
+          extra_src="${{ env.PROJECT_DIR }}/nrfjprog_cfg_ruuviair.toml"
+          if [ ! -f "$extra_src" ]; then
+            echo "Missing release file: $extra_src" >&2
+            exit 1
+          fi
+          cp "$extra_src" "$ARTIFACT_NAME/nrfjprog_cfg_ruuviair.toml"
 
           # Create zip file to upload as release asset
           ARTIFACT_PATH="$GITHUB_WORKSPACE/$ARTIFACT_NAME.zip"
@@ -348,9 +361,15 @@ jobs:
           echo "artifact_path=$ARTIFACT_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact ${{ steps.create_zip.outputs.artifact_name }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          # Use a name without .zip; GitHub adds .zip on download if the name ends with .zip
+          # Use a name without .zip; GitHub adds .zip on download if the name
+          # ends with .zip. Upload the per-run release DIRECTORY (not the .zip
+          # file produced by "Create zip"); this keeps the Actions-page
+          # "Download artifact" UX identical to the original implementation
+          # -- the downloaded wrapper zip contains the directory directly,
+          # not an inner zip. The release job (below) re-creates the .zip
+          # from this same artifact, so no second upload of identical bytes
+          # is needed between jobs.
           name: ${{ steps.create_zip.outputs.artifact_name }}
-          # Upload whole directory with build artifacts
           path: ${{ steps.create_zip.outputs.artifact_name }}
