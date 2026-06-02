@@ -38,7 +38,7 @@ jobs:
 
       # Log in to GHCR. This can be removed if the image is public.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -63,21 +63,21 @@ jobs:
 
       - name: Restore cached 'nrfutil Toolchain Manager'
         id: cache-nrfutil-tcm
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.nrfutil
           key: nrfutil-tcm-${{ env.NCS_VERSION }}-v4
 
       - name: Restore cached 'nRF Connect toolchains'
         id: cache-ncs-toolchains
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/ncs/toolchains
           key: ncs-toolchains-${{ env.NCS_VERSION }}-v4
 
       - name: Restore cached 'nRF Connect SDK ${{ env.NCS_VERSION }}'
         id: cache-ncs-sdk
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/ncs/${{ env.NCS_VERSION }}
           key: ncs-sdk-${{ env.NCS_VERSION }}-v4
@@ -124,27 +124,27 @@ jobs:
             '
       - name: Save 'nrfutil Toolchain Manager'
         if: ${{ steps.cache-nrfutil-tcm.outputs.cache-hit != 'true' && !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.nrfutil
           key: ${{ steps.cache-nrfutil-tcm.outputs.cache-primary-key }}
 
       - name: Save 'nRF Connect toolchains' cache (only on miss)
         if: ${{ steps.cache-ncs-toolchains.outputs.cache-hit != 'true' && !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/ncs/toolchains
           key: ${{ steps.cache-ncs-toolchains.outputs.cache-primary-key }}
 
       - name: Save 'nRF Connect SDK' cache (only on miss)
         if: ${{ steps.cache-ncs-sdk.outputs.cache-hit != 'true' && !cancelled() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/ncs/${{ env.NCS_VERSION }}
           key: ${{ steps.cache-ncs-sdk.outputs.cache-primary-key }}
 
       - name: Checkout the code
-        uses: actions/checkout@v4     # Checks-out repository under $GITHUB_WORKSPACE
+        uses: actions/checkout@v6     # Checks-out repository under $GITHUB_WORKSPACE
         with:
           path: ${{ env.PROJECT_DIR }}
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
